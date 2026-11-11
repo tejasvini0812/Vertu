@@ -6,6 +6,7 @@ import { GL } from './gl.js';
 import { PRODUCTS, HERO_SLIDES, CRAFT_IMAGES, CONTENT, fmt, firstInStock } from './data.js';
 import { cart, initCartUI, toast } from './cart.js';
 import { bindAccountLink } from './chrome.js';
+import { newsletterForm, bindNewsletterForms } from './newsletter.js';
 import './customer.js';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -480,6 +481,11 @@ if (finePointer && !reduce) {
 /* ------------------------------------------------------------------ */
 
 bindAccountLink();
+const newsSlot = document.querySelector('[data-news-slot]');
+if (newsSlot) {
+  newsSlot.outerHTML = newsletterForm();
+  bindNewsletterForms();
+}
 const drawer = initCartUI({
   onOpen: () => lenis && lenis.stop(),
   onClose: () => lenis && lenis.start(),

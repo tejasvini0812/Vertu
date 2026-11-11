@@ -1639,3 +1639,9 @@ body.gated .shell {
 code {
   font-size: 0.8125rem;
 }
+.track {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  background: color-mix(in srgb, var(--paper-2) 60%, transparent);
+}

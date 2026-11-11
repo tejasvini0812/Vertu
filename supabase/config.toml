@@ -12,3 +12,28 @@ verify_jwt = false
 
 [functions.admin-order]
 verify_jwt = false
+
+# send-emails checks its own x-cron-secret header; email-unsubscribe is called by email apps.
+[functions.send-emails]
+verify_jwt = false
+
+[functions.email-unsubscribe]
+verify_jwt = false
+
+# Branded sign-in emails (used by `supabase` CLI deploys; for a hosted project paste them into
+# Authentication -> Emails -> Templates, subjects are in supabase/templates/subjects.json).
+[auth.email.template.magic_link]
+subject = "Your VERTU sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Confirm your VERTU account"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your VERTU password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.invite]
+subject = "You’re invited to the VERTU store manager"
+content_path = "./supabase/templates/invite.html"

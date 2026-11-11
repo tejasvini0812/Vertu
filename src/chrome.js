@@ -1,6 +1,7 @@
 import { CONTENT } from './data.js';
 import { initCartUI } from './cart.js';
 import { customer, accountsEnabled } from './customer.js';
+import { newsletterForm, bindNewsletterForms } from './newsletter.js';
 
 /**
  * Header, announcement bar, footer, bag drawer and toast for the sub-pages (shop, product, account).
@@ -35,7 +36,7 @@ export function mountChrome({ current = '' } = {}) {
     'beforeend',
     `<footer class="footer">
       <div class="footer__top"><span class="footer__logo" role="img" aria-label="VERTU"></span>
-        <p class="footer__line">A utility-first bag brand designed for modern everyday life.</p></div>
+        <p class="footer__line">A utility-first bag brand designed for modern everyday life.</p>${newsletterForm()}</div>
       <div class="footer__cols">
         <nav aria-label="Footer"><a href="${base}shop/">Shop</a><a href="${base}#collections">Collections</a><a href="${base}account/">Account</a></nav>
         <div><a href="mailto:contact.shopvertu@gmail.com">contact.shopvertu@gmail.com</a><a href="https://instagram.com/shopvertu" rel="noopener">@shopvertu</a></div>
@@ -58,6 +59,7 @@ export function mountChrome({ current = '' } = {}) {
   );
   const drawer = initCartUI({ base });
   bindAccountLink();
+  bindNewsletterForms();
   return { drawer, base };
 }
 

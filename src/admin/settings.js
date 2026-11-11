@@ -1,6 +1,7 @@
 import { getState, update, describeError, LIVE, supabase } from '../store.js';
 import { session, signOut } from './auth.js';
 import { esc, $, toast, confirmDialog, enter, listen } from './ui.js';
+import { MAIL_LABEL, MAIL_STATUS } from './orders.js';
 
 const ENTITY = { products: 'Product', orders: 'Order', site_content: 'Editorial', settings: 'Settings', admin_users: 'Team', coupons: 'Discount', categories: 'Collection' };
 const when = (t) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -69,6 +70,28 @@ export async function renderSettings(root) {
       </div>
     </section>
 
+    <section class="block" aria-labelledby="s-mail">
+      <div class="block__intro"><h2 id="s-mail">Notifications</h2><p>Customers get emails about their orders automatically. Choose where the store’s own alerts go.</p></div>
+      <div class="block__form">
+        <form data-notify-form novalidate style="display:grid;gap:18px">
+          <div class="field" style="max-width:420px"><label for="n-email">Send store alerts to</label><input id="n-email" class="input" type="email" value="${esc(s.settings.notifyEmail || '')}" placeholder="orders@yourdomain.com" ${owner ? '' : 'disabled'} />
+            <small>New orders, orders that need a look, and colours running low. Leave empty for none.</small></div>
+          <label class="switch"><input type="checkbox" id="n-cart" ${s.settings.abandonedCartEnabled ? 'checked' : ''} ${owner ? '' : 'disabled'}><i></i>Remind shoppers about a bag they left</label>
+          <small class="muted" style="margin-top:-8px">One email, 3 hours after a signed-in shopper’s bag stops changing. Only to people who agreed to marketing emails.</small>
+          ${owner ? '<div><button class="btn btn--ink" type="submit">Save notifications</button></div>' : ''}
+        </form>
+        ${LIVE ? '<div><p class="label" style="font-weight:500;margin:10px 0 6px">Recent emails</p><ul class="history" data-outbox><li class="muted">Loading…</li></ul></div>' : '<p class="muted">Emails are sent once the store is connected to its database and an email service.</p>'}
+      </div>
+    </section>
+
+    ${
+      owner && LIVE
+        ? `<section class="block" aria-labelledby="s-news">
+      <div class="block__intro"><h2 id="s-news">Newsletter</h2><p>People who confirmed their email from the footer sign-up, or ticked the box in their account.</p></div>
+      <div class="block__form"><p data-subs class="muted">Loading…</p><div><button class="btn btn--ghost" data-csv type="button">Download subscribers (CSV)</button></div></div>
+    </section>` : ''
+    }
+
     ${
       owner && LIVE
         ? `<section class="block" aria-labelledby="s-team">
@@ -118,6 +141,63 @@ export async function renderSettings(root) {
       toast(describeError(err));
     }
   });
+
+  $('[data-notify-form]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const em = $('#n-email', root).value.trim();
+    if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return toast('Enter a valid email address, or leave it empty.');
+    try {
+      update((st) => Object.assign(st.settings, { notifyEmail: em, abandonedCartEnabled: $('#n-cart', root).checked })).then(() => LIVE && toast('Notifications saved'), () => {});
+      if (!LIVE) toast('Notifications saved');
+    } catch (err) {
+      toast(describeError(err));
+    }
+  });
+
+  const loadOutbox = async () => {
+    const ul = $('[data-outbox]', root);
+    if (!ul) return;
+    const { data, error } = await supabase.from('email_outbox').select('id, kind, to_email, status, created_at, sent_at, last_error, related_order').order('id', { ascending: false }).limit(30);
+    if (!ul.isConnected) return;
+    if (error) return (ul.innerHTML = `<li class="muted">${esc(describeError(error))}</li>`);
+    ul.innerHTML = data.length
+      ? data
+          .map(
+            (m) => `<li><span>${esc(MAIL_LABEL[m.kind] || m.kind)}${m.related_order ? ` · ${esc(m.related_order)}` : ''}<br><span class="muted" style="font-size:.8125rem">${esc(m.to_email)}${m.last_error ? ` · ${esc(m.last_error)}` : ''}</span></span>
+            <span class="muted">${MAIL_STATUS[m.status] || m.status}${owner && ['failed', 'skipped'].includes(m.status) ? ` <button class="text-btn" data-retry="${m.id}">Retry</button>` : ''}</span></li>`,
+          )
+          .join('')
+      : '<li class="muted">No emails yet.</li>';
+  };
+  if (LIVE) loadOutbox();
+  on('click', async (e) => {
+    const b = e.target.closest('[data-retry]');
+    if (!b) return;
+    const { error } = await supabase.rpc('retry_email', { p_id: Number(b.dataset.retry) });
+    toast(error ? describeError(error) : 'Queued to send again');
+    loadOutbox();
+  });
+
+  if (owner && LIVE) {
+    supabase
+      .from('newsletter_subscribers')
+      .select('email', { count: 'exact', head: true })
+      .eq('status', 'subscribed')
+      .then(({ count }) => {
+        const el = $('[data-subs]', root);
+        if (el) el.textContent = `${count ?? 0} confirmed ${count === 1 ? 'subscriber' : 'subscribers'}.`;
+      });
+    $('[data-csv]', root).addEventListener('click', async () => {
+      const { data, error } = await supabase.from('newsletter_subscribers').select('email, source, confirmed_at').eq('status', 'subscribed').order('confirmed_at');
+      if (error) return toast(describeError(error));
+      const csv = 'email,source,confirmed_at\n' + data.map((r) => [r.email, r.source, r.confirmed_at].map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `vertu-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
 
   if (!(owner && LIVE)) return;
 

@@ -255,5 +255,120 @@ await expect('guest orders join the account with the same email', async () => {
   return { rows: [{ n: claimed.rows[0].n, ids: mine.rows.map((x) => x.id) }] };
 }, (r) => r.rows[0].n === 1 && r.rows[0].ids.length === 1 && r.rows[0].ids[0] === cod.order_id);
 await expect('anon cannot claim orders', () => as(null, null, `select claim_my_orders()`), errored('permission'));
+
+// ---------------------------------------------------------------- Phase 4: emails
+const outbox = async (where = 'true') => (await db.query(`select kind, to_email, payload, dedupe_key, status from email_outbox where ${where} order by id`)).rows;
+const kinds = async (orderId) => (await outbox(`related_order = '${orderId}'`)).map((r) => r.kind);
+await db.exec(`update settings set notify_email = 'store@vertu.test'`);
+await db.exec(`delete from email_outbox`);
+
+let e1;
+await expect('cash order emails the buyer and the store', async () => {
+  e1 = await create([{ sku: 'VRT-MS-BLA', qty: 1 }], null, 'cod', { email: 'Asha@Example.com', phone: '+919811111111' });
+  return { rows: [await kinds(e1.order_id)] };
+}, (r) => r.rows[0].join() === 'order_confirmed,admin_new_order');
+await expect('order email has lines, totals and the private link token', () => db.query(`select payload, to_email from email_outbox where kind='order_confirmed' and related_order=$1`, [e1.order_id]),
+  (r) => r.rows[0].to_email === 'asha@example.com' && r.rows[0].payload.lines[0].name === 'Men’s Sling Bag' && r.rows[0].payload.total === e1.total && r.rows[0].payload.token === e1.access_token);
+let e2;
+await expect('online order: nothing until paid', async () => { e2 = await create([{ sku: 'VRT-MS-NAV', qty: 1 }]); return { rows: [await kinds(e2.order_id)] }; }, (r) => r.rows[0].length === 0);
+await svc(`select attach_razorpay_order($1, 'order_E2')`, [e2.order_id]);
+await svc(`select mark_order_paid('order_E2','pay_E2',$1)`, [e2.total * 100]);
+await svc(`select mark_order_paid('order_E2','pay_E2',$1)`, [e2.total * 100]);
+await expect('paid: confirmation sent once', async () => ({ rows: [await kinds(e2.order_id)] }), (r) => r.rows[0].join() === 'order_confirmed,admin_new_order');
+await expect('staff add tracking', () => as(STAFF, 'aal2', `update orders set courier='Delhivery', tracking_number='DL123', tracking_url='https://track.example/DL123' where id='${e2.order_id}' returning id`), rows(1));
+await expect('tracking link must be a web address', () => as(STAFF, 'aal2', `update orders set tracking_url='javascript:alert(1)' where id='${e2.order_id}'`), errored('check'));
+await expect('shoppers cannot add tracking', () => as(OTHER, 'aal1', `update orders set courier='x' where id='${e2.order_id}'`), denied);
+await as(STAFF, 'aal2', `update orders set status='Processing' where id='${e2.order_id}'`);
+await as(STAFF, 'aal2', `update orders set status='Shipped' where id='${e2.order_id}'`);
+await expect('shipped email carries tracking', () => db.query(`select payload from email_outbox where kind='order_shipped' and related_order=$1`, [e2.order_id]), (r) => r.rows[0]?.payload.tracking_number === 'DL123');
+await as(STAFF, 'aal2', `update orders set status='Delivered' where id='${e2.order_id}'`);
+await svc(`select settle_cancel_refund($1, 20000, 'rf', false, false, null, 'goodwill')`, [e2.order_id]);
+await expect('delivered and refund emails', async () => ({ rows: [await kinds(e2.order_id)] }), (r) => r.rows[0].join() === 'order_confirmed,admin_new_order,order_shipped,order_delivered,order_refunded');
+await expect('refund email states the amount', () => db.query(`select payload from email_outbox where kind='order_refunded' and related_order=$1`, [e2.order_id]), (r) => r.rows[0].payload.refund === 200);
+await svc(`select settle_cancel_refund($1, 0, null, true, true, null, 'customer asked')`, [e1.order_id]);
+await expect('cancelling a confirmed order emails once', async () => ({ rows: [await kinds(e1.order_id)] }), (r) => r.rows[0].join() === 'order_confirmed,admin_new_order,order_cancelled');
+let e3;
+e3 = await create([{ sku: 'VRT-MS-NAV', qty: 1 }]);
+await db.exec(`update orders set expires_at = now() - interval '1 minute' where id='${e3.order_id}'`);
+await svc(`select release_expired_orders()`);
+await expect('abandoned online checkouts expire quietly', async () => ({ rows: [await kinds(e3.order_id)] }), (r) => r.rows[0].length === 0);
+
+await expect('back in stock emails everyone who asked', async () => {
+  await as(STAFF, 'aal2', `update products set stock = 5 where id='VRT-SL-MUS'`);
+  return { rows: [await outbox(`kind='back_in_stock'`)] };
+}, (r) => r.rows[0].length === 1 && r.rows[0][0].to_email === 'fan@example.com' && r.rows[0][0].payload.colour === 'Mustard');
+await expect('...and only once', async () => {
+  await as(STAFF, 'aal2', `update products set stock = 0 where id='VRT-SL-MUS'`);
+  await as(STAFF, 'aal2', `update products set stock = 3 where id='VRT-SL-MUS'`);
+  return { rows: [await outbox(`kind='back_in_stock'`), (await db.query(`select notified_at from stock_alerts where sku='VRT-SL-MUS'`)).rows[0]] };
+}, (r) => r.rows[0].length === 1 && r.rows[1].notified_at);
+await expect('crossing the low-stock line alerts the store once a day', async () => {
+  await db.exec(`update products set stock = 20 where id='VRT-LP-COB'`);
+  await as(STAFF, 'aal2', `update products set stock = 3 where id='VRT-LP-COB'`);
+  await as(STAFF, 'aal2', `update products set stock = 9 where id='VRT-LP-COB'`);
+  await as(STAFF, 'aal2', `update products set stock = 2 where id='VRT-LP-COB'`);
+  return { rows: [await outbox(`kind='admin_low_stock' and payload->>'sku'='VRT-LP-COB'`)] };
+}, (r) => r.rows[0].length === 1 && r.rows[0][0].to_email === 'store@vertu.test' && r.rows[0][0].payload.stock === 3);
+await expect('no store address, no store emails', async () => {
+  await db.exec(`update settings set notify_email = null`);
+  const x = await create([{ sku: 'VRT-SL-BLA', qty: 1 }], null, 'cod', { email: 'b@example.com', phone: '+919822222222' });
+  await db.exec(`update settings set notify_email = 'store@vertu.test'`);
+  return { rows: [await kinds(x.order_id)] };
+}, (r) => r.rows[0].join() === 'order_confirmed');
+
+await expect('newsletter sign-up sends a confirmation', () => as(null, null, `select subscribe_newsletter(' News@Example.com ', 'footer') r`), (r) => r.rows[0].r.ok);
+await expect('signing up twice in a day sends one email', async () => { await as(null, null, `select subscribe_newsletter('news@example.com')`); return { rows: await outbox(`kind='newsletter_confirm'`) }; }, (r) => r.rows.length === 1 && r.rows[0].to_email === 'news@example.com');
+await expect('bad email refused', () => as(null, null, `select subscribe_newsletter('nope') r`), (r) => r.rows[0].r.error === 'bad_email');
+await expect('subscriber list is private', () => as(null, null, `select * from newsletter_subscribers`), rows(0));
+await expect('staff cannot read subscribers', () => as(STAFF, 'aal2', `select * from newsletter_subscribers`), rows(0));
+const tok = (await db.query(`select token from newsletter_subscribers where email='news@example.com'`)).rows[0].token;
+await expect('wrong token confirms nothing', () => as(null, null, `select confirm_newsletter(gen_random_uuid()) r`), (r) => r.rows[0].r.ok === false);
+await expect('confirm link subscribes', async () => { await as(null, null, `select confirm_newsletter($1)`, [tok]); return db.query(`select status from newsletter_subscribers where email='news@example.com'`); }, (r) => r.rows[0].status === 'subscribed');
+await expect('owner can see subscribers', () => as(OWNER, 'aal2', `select email from newsletter_subscribers where status='subscribed'`), rows(1));
+await expect('one-click unsubscribe', async () => { await as(null, null, `select unsubscribe_newsletter($1)`, [tok]); return db.query(`select status from newsletter_subscribers where email='news@example.com'`); }, (r) => r.rows[0].status === 'unsubscribed');
+await expect('account opt-in joins the list without a confirmation email', async () => {
+  await as(OTHER, 'aal1', `update profiles set marketing_opt_in = true where id='${OTHER}'`);
+  return db.query(`select status from newsletter_subscribers where email='other@vertu.test'`);
+}, (r) => r.rows[0]?.status === 'subscribed');
+
+await expect('abandoned-bag emails are off by default', () => svc(`select queue_abandoned_carts() n`), (r) => r.rows[0].n === 0);
+await db.exec(`update orders set customer_id = null where customer_id = '${OTHER}';
+  update settings set abandoned_cart_enabled = true;
+  insert into carts (user_id, items, updated_at) values ('${OTHER}', '[{"sku":"VRT-LP-CRI","qty":1},{"sku":"VRT-SL-MUS","qty":9}]', now()) on conflict (user_id) do update set items = excluded.items;`);
+await db.exec(`alter table carts disable trigger carts_touch; update carts set updated_at = now() - interval '4 hours' where user_id='${OTHER}'; alter table carts enable trigger carts_touch;`);
+await expect('a 4-hour-old bag gets one reminder (opted-in only)', () => svc(`select queue_abandoned_carts() n`), (r) => r.rows[0].n === 1);
+await expect('reminder lists the bag with an unsubscribe link', () => db.query(`select payload from email_outbox where kind='abandoned_cart'`), (r) => r.rows[0].payload.items.length === 2 && r.rows[0].payload.unsubscribe);
+await expect('not repeated', async () => { await svc(`select queue_abandoned_carts()`); return { rows: await outbox(`kind='abandoned_cart'`) }; }, (r) => r.rows.length === 1);
+await expect('no reminder if they ordered after saving the bag', async () => {
+  await db.exec(`alter table carts disable trigger carts_touch; update carts set updated_at = now() - interval '27 hours' where user_id='${OTHER}'; alter table carts enable trigger carts_touch; update orders set customer_id='${OTHER}', created_at = now() - interval '1 hour' where id='${e2.order_id}'`);
+  return svc(`select queue_abandoned_carts() n`);
+}, (r) => r.rows[0].n === 0);
+
+await expect('browsers cannot read or claim the outbox', async () => {
+  const a = await as(OTHER, 'aal1', `select * from email_outbox`);
+  let b = null; try { await as(null, null, `select claim_outbox(10)`); } catch (e) { b = e.message; }
+  return { rows: [{ a: a.rows.length, b }] };
+}, (r) => r.rows[0].a === 0 && /permission/.test(r.rows[0].b));
+await expect('staff see the email log', () => as(STAFF, 'aal2', `select count(*)::int n from email_outbox`), (r) => r.rows[0].n > 10);
+let claimed;
+await expect('sender claims due emails', async () => { claimed = (await svc(`select claim_outbox(5) r`)).rows[0].r; return { rows: claimed }; }, (r) => r.rows.length === 5 && r.rows.every((x) => x.attempts === 1));
+await expect('a second sender gets different emails', async () => ({ rows: (await svc(`select claim_outbox(5) r`)).rows[0].r }), (r) => r.rows.every((x) => !claimed.some((c) => c.id === x.id)));
+await svc(`select complete_outbox($1, true, 're_1', null)`, [claimed[0].id]);
+await svc(`select complete_outbox($1, false, null, 'smtp timeout')`, [claimed[1].id]);
+await expect('sent and retried', () => db.query(`select id, status, send_after > now() later, last_error from email_outbox where id in ($1,$2) order by id`, [claimed[0].id, claimed[1].id]),
+  (r) => r.rows[0].status === 'sent' && r.rows[1].status === 'pending' && r.rows[1].later && r.rows[1].last_error === 'smtp timeout');
+await expect('gives up after five tries', async () => {
+  await db.exec(`update email_outbox set attempts = 4, send_after = now() - interval '1 minute' where id = ${claimed[1].id}`);
+  const c = (await svc(`select claim_outbox(100) r`)).rows[0].r;
+  await svc(`select complete_outbox($1, false, null, 'still failing')`, [claimed[1].id]);
+  return db.query(`select status, attempts from email_outbox where id=$1`, [claimed[1].id]);
+}, (r) => r.rows[0].status === 'failed' && r.rows[0].attempts === 5);
+await expect('staff cannot retry emails', () => as(STAFF, 'aal2', `select retry_email(${claimed[1].id})`), errored('not_allowed'));
+await expect('owner retries a failed email', async () => { await as(OWNER, 'aal2', `select retry_email(${claimed[1].id})`); return db.query(`select status, attempts from email_outbox where id=$1`, [claimed[1].id]); }, (r) => r.rows[0].status === 'pending' && r.rows[0].attempts === 0);
+await expect('stale emails are skipped, not sent days late', async () => {
+  await db.exec(`update email_outbox set created_at = now() - interval '4 days' where id = ${claimed[1].id}`);
+  await svc(`select claim_outbox(1)`);
+  return db.query(`select status from email_outbox where id=$1`, [claimed[1].id]);
+}, (r) => r.rows[0].status === 'skipped');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

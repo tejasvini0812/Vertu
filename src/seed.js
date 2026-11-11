@@ -192,7 +192,7 @@ export function seed(now = Date.now()) {
     version: 1,
     seededAt: now,
     categories: CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) })),
-    settings: { lowStock: 5, shippingFee: 0, freeShippingOver: 0, codEnabled: false, codFee: 0, codMax: 5000, holdMinutes: 15 },
+    settings: { lowStock: 5, shippingFee: 0, freeShippingOver: 0, codEnabled: false, codFee: 0, codMax: 5000, holdMinutes: 15, notifyEmail: '', abandonedCartEnabled: false },
     coupons: [],
     products,
     orders,

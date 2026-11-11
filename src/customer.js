@@ -113,7 +113,9 @@ async function mergeCart() {
   syncing = true;
   cart.replace(normalise([...best].map(([sku, qty]) => ({ sku, qty }))));
   syncing = false;
-  pushCart();
+  // only write back if the merge changed something
+  const key = (list) => JSON.stringify([...(list || [])].map((i) => [i.sku, i.qty]).sort());
+  if (key(cart.items) !== key(data?.items)) pushCart();
 }
 
 async function setUser(next) {

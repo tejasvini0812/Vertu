@@ -28,6 +28,8 @@ export const settingsFromRow = (r) => ({
   codFee: r.cod_fee ?? 0,
   codMax: r.cod_max ?? 5000,
   holdMinutes: r.hold_minutes ?? 15,
+  notifyEmail: r.notify_email || '',
+  abandonedCartEnabled: !!r.abandoned_cart_enabled,
 });
 const SETTINGS_COLUMNS = {
   lowStock: 'low_stock',
@@ -37,6 +39,8 @@ const SETTINGS_COLUMNS = {
   codFee: 'cod_fee',
   codMax: 'cod_max',
   holdMinutes: 'hold_minutes',
+  notifyEmail: 'notify_email',
+  abandonedCartEnabled: 'abandoned_cart_enabled',
 };
 export const COUPON_FIELDS = ['kind', 'value', 'min_subtotal', 'starts_at', 'ends_at', 'max_uses', 'active', 'note'];
 
@@ -70,6 +74,9 @@ export const orderFromRow = (r) => ({
   paidAt: r.paid_at ? Date.parse(r.paid_at) : null,
   refunded: r.refunded_amount ?? 0,
   flag: r.flag || null,
+  courier: r.courier || '',
+  trackingNumber: r.tracking_number || '',
+  trackingUrl: r.tracking_url || '',
 });
 
 export const categoryFromRow = (r) => ({
@@ -111,6 +118,9 @@ export function diff(prev, next) {
     const values = {};
     if (old.status !== o.status) values.status = o.status;
     if ((old.note || '') !== (o.note || '')) values.note = o.note || '';
+    if ((old.courier || '') !== (o.courier || '')) values.courier = o.courier || null;
+    if ((old.trackingNumber || '') !== (o.trackingNumber || '')) values.tracking_number = o.trackingNumber || null;
+    if ((old.trackingUrl || '') !== (o.trackingUrl || '')) values.tracking_url = o.trackingUrl || null;
     if (Object.keys(values).length) ops.push({ table: 'orders', type: 'update', id: o.id, values });
   }
 
@@ -136,7 +146,7 @@ export function diff(prev, next) {
 
   const sv = {};
   for (const [k, col] of Object.entries(SETTINGS_COLUMNS)) {
-    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k];
+    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k] === '' ? null : next.settings[k];
   }
   if (Object.keys(sv).length) ops.push({ table: 'settings', type: 'update', id: 1, values: sv });
 

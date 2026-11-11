@@ -45,6 +45,7 @@ The site runs in one of two modes:
    - `supabase/migrations/20261112000000_phase1_core.sql`: catalogue, orders, staff, access rules, storage bucket
    - `supabase/migrations/20261112010000_phase2_customers.sql`: customer profiles, addresses, wishlist, saved bag, back-in-stock alerts, collection details
    - `supabase/migrations/20261112020000_phase3_checkout.sql`: pricing, stock holds, orders and payments, coupons, refunds
+   - `supabase/migrations/20261112030000_phase4_emails.sql`: email outbox and triggers, newsletter, order tracking
    - `supabase/seed.sql`: the 15 starting products, collection details and editorial content (safe to re-run)
    - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
 
@@ -111,6 +112,48 @@ How an order is placed:
 
 Without Razorpay keys, online payment shows as unavailable. Cash on delivery still works if you switch it on.
 
+## Emails (Phase 4)
+
+Every email is written to the `email_outbox` table by the same database change that caused it, so none are lost or duplicated. The `send-emails` function sends them through **Resend** every minute. A failed send is retried after 2, 4, 8 and 16 minutes, then marked failed so an owner can retry it from Settings.
+
+| Email | Sent when | To |
+|---|---|---|
+| Order confirmed | An online payment is confirmed, or a cash-on-delivery order is placed | Customer |
+| On its way | Staff mark the order **Shipped** (includes courier, tracking number and link if entered) | Customer |
+| Delivered | Marked **Delivered** | Customer |
+| Cancelled | An order is cancelled (says whether money is being refunded) | Customer |
+| Refund | A part or full refund is made | Customer |
+| Back in stock | A sold-out colour gets stock again (once per request) | Shoppers who asked |
+| Bag reminder | A signed-in shopper's bag has been left for 3 hours. **Off by default**, and only for people who agreed to marketing emails. One per bag per day. | Shopper |
+| Confirm subscription | Someone signs up in the footer (double opt-in) | Them |
+| New order / Needs a look / Low stock | New confirmed order; a payment that needs refunding; a colour drops to the low-stock level (once a day) | The store address in Settings |
+
+Unpaid online checkouts that expire send nothing. Marketing emails (bag reminders) carry an unsubscribe link and one-click unsubscribe headers. The newsletter page asks for a click before unsubscribing, so email security scanners can't unsubscribe people by opening links.
+
+**Admin:**
+- The order panel has *Shipping details* (courier, tracking number, link) and lists every email sent for that order.
+- *Settings → Notifications* sets the store alert address and the bag reminder, and shows recent emails with a *Retry* for failures.
+- *Settings → Newsletter* shows the subscriber count and downloads a CSV.
+
+### Setting up email
+
+1. Create a Resend account and **verify your sending domain** (it gives you DNS records: SPF, DKIM and a return path). Add a DMARC record too, so mail lands in inboxes.
+2. Set the function secrets and deploy:
+   ```
+   supabase secrets set RESEND_API_KEY=re_xxx EMAIL_FROM="VERTU <orders@yourdomain.com>" \
+     EMAIL_REPLY_TO=contact.shopvertu@gmail.com SUPPORT_EMAIL=contact.shopvertu@gmail.com \
+     SITE_URL=https://yourdomain.com EMAIL_CRON_SECRET=choose-a-long-random-string
+   supabase functions deploy send-emails email-unsubscribe
+   ```
+3. Edit the two values at the top of `supabase/schedule_emails.sql` (your project URL and the same cron secret), then run it in the SQL editor. It calls `send-emails` every minute.
+4. **Sign-in emails:** under Authentication → Emails → SMTP settings, use Resend's SMTP details so Supabase's own emails come from your domain too. Then paste the branded templates from `supabase/templates/` into Authentication → Emails → Templates (subjects are in `subjects.json`). The *Magic Link* template already includes the 6-digit `{{ .Token }}` that the account page asks for.
+5. In the admin: Settings → Notifications, enter where store alerts should go.
+6. Test: place a cash-on-delivery order, wait a minute, and check both inboxes and *Recent emails*.
+
+`npm test` writes `email-previews/index.html`, a page showing every email with sample data.
+
+SMS and WhatsApp updates are not included. They need an Indian provider (MSG91, Gupshup) and DLT registration of your sender ID and message templates. The outbox design makes them a small addition later.
+
 ### What each role can do
 
 | | Shopper / public | Staff | Owner |
@@ -139,11 +182,11 @@ These rules are enforced by the database (row level security in the migration), 
 
 - `npm test` runs both suites.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
-- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 128 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds.
+- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 168 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, and which emails are queued when.
 - `tests/payments.test.mjs`: the Edge Function logic against that same database with a fake Razorpay. Covers signatures, forged and replayed payments, webhooks, retries, Razorpay outages, refunds and cancellations.
 - `tests/pricing-parity.test.mjs`: the browser's pricing matches the database's.
+- `tests/emails.test.mjs`: every template renders cleanly and escapes customer input, plus the sender's sending, retries, auth and configuration checks against the real outbox.
 
 ### Still to do (later phases)
 
-- **Phase 4:** order, shipping and back-in-stock emails (checkout already says "updates go to your email").
 - **Phase 5 onwards:** shipping (Shiprocket), invoices, legal pages, security hardening, SEO and monitoring.

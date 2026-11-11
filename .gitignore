@@ -8,3 +8,4 @@ dist-live
 .env
 .env.local
 .env.*.local
+email-previews

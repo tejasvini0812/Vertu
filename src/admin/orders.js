@@ -1,4 +1,4 @@
-import { getState, update, describeError, money, orderTotal, countsAsSale, STATUSES, CATEGORIES, LIVE, callFunction, refresh } from '../store.js';
+import { getState, update, describeError, money, orderTotal, countsAsSale, STATUSES, CATEGORIES, LIVE, callFunction, refresh, supabase } from '../store.js';
 import { session } from './auth.js';
 import { esc, $, $$, toast, openDrawer, drawerEl, enter, listen, confirmDialog } from './ui.js';
 import { fmtDate, fmtDateTime, statusChip } from './overview.js';
@@ -156,6 +156,17 @@ function openOrder(id, rerender) {
         ${o.paidAt ? `<div class="kv"><dt>Paid</dt><dd>${fmtDateTime(o.paidAt)}</dd></div>` : ''}
       </dl></div>
     ${
+      countsAsSale(o) && o.status !== 'Cancelled'
+        ? `<form class="track" data-track novalidate><p class="label" style="font-weight:500">Shipping details</p>
+        <div class="row2"><div class="field"><label for="t-courier">Courier</label><input id="t-courier" class="input" maxlength="60" value="${esc(o.courier || '')}" placeholder="e.g. Delhivery" /></div>
+        <div class="field"><label for="t-num">Tracking number</label><input id="t-num" class="input" maxlength="60" value="${esc(o.trackingNumber || '')}" /></div></div>
+        <div class="field"><label for="t-url">Tracking link</label><input id="t-url" class="input" type="url" value="${esc(o.trackingUrl || '')}" placeholder="https://" /><small>Add these before marking the order Shipped: the customer’s “on its way” email includes them.</small></div>
+        <p class="err" data-track-err role="alert"></p>
+        <button class="btn btn--ghost" type="submit" style="justify-self:start">Save shipping details</button></form>`
+        : ''
+    }
+    ${LIVE ? '<div><p class="label" style="font-weight:500;margin-bottom:6px">Emails</p><ul class="history" data-mails><li class="muted">Loading…</li></ul></div>' : ''}
+    ${
       owner && (canCancel || (online && remaining > 0))
         ? `<div class="danger-zone"><p class="label" style="font-weight:500">Cancel or refund</p>
         ${online && remaining > 0 ? `<form class="refund" data-refund novalidate>
@@ -168,6 +179,23 @@ function openOrder(id, rerender) {
         : ''
     }`;
   openDrawer({ title: o.id, sub: `Placed ${fmtDateTime(o.createdAt)}`, body, foot: '' });
+  if (LIVE) loadMails(id, $('[data-mails]', drawerEl));
+
+  $('[data-track]', drawerEl)?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const courier = $('#t-courier', drawerEl).value.trim();
+    const num = $('#t-num', drawerEl).value.trim();
+    const url = $('#t-url', drawerEl).value.trim();
+    const err = $('[data-track-err]', drawerEl);
+    if (url && !/^https?:\/\/\S+$/.test(url)) return (err.textContent = 'The tracking link must start with https://');
+    err.textContent = '';
+    try {
+      update((s) => Object.assign(s.orders.find((x) => x.id === id), { courier, trackingNumber: num, trackingUrl: url })).catch(() => {});
+      toast('Shipping details saved');
+    } catch (x) {
+      toast(describeError(x));
+    }
+  });
 
   $('[data-seg]', drawerEl).addEventListener('click', (e) => {
     const b = e.target.closest('[data-s]');
@@ -243,4 +271,20 @@ function sampleAction(o, p) {
       if (p.restock) restock();
     }
   });
+}
+
+export const MAIL_LABEL = {
+  order_confirmed: 'Order confirmation', order_shipped: 'On its way', order_delivered: 'Delivered', order_cancelled: 'Cancelled',
+  order_refunded: 'Refund', admin_new_order: 'New order (to you)', admin_attention: 'Needs a look (to you)',
+  back_in_stock: 'Back in stock', abandoned_cart: 'Bag reminder', newsletter_confirm: 'Newsletter confirmation', admin_low_stock: 'Low stock (to you)',
+};
+export const MAIL_STATUS = { pending: 'Queued', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Not sent' };
+
+async function loadMails(id, ul) {
+  const { data, error } = await supabase.from('email_outbox').select('kind, to_email, status, created_at, sent_at, last_error').eq('related_order', id).order('id');
+  if (!ul?.isConnected) return;
+  if (error) return (ul.innerHTML = `<li class="muted">${esc(describeError(error))}</li>`);
+  ul.innerHTML = data.length
+    ? data.map((m) => `<li><span>${esc(MAIL_LABEL[m.kind] || m.kind)}<br><span class="muted" style="font-size:.8125rem">${esc(m.to_email)}${m.last_error ? ` · ${esc(m.last_error)}` : ''}</span></span><span class="muted">${MAIL_STATUS[m.status] || m.status}, ${fmtDateTime(m.sent_at || m.created_at)}</span></li>`).join('')
+    : '<li class="muted">No emails for this order yet.</li>';
 }
