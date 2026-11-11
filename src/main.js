@@ -5,6 +5,8 @@ import Lenis from 'lenis';
 import { GL } from './gl.js';
 import { PRODUCTS, HERO_SLIDES, CRAFT_IMAGES, CONTENT, fmt, firstInStock } from './data.js';
 import { cart, initCartUI, toast } from './cart.js';
+import { bindAccountLink } from './chrome.js';
+import './customer.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -477,6 +479,7 @@ if (finePointer && !reduce) {
 /* bag + quick buy                                                     */
 /* ------------------------------------------------------------------ */
 
+bindAccountLink();
 const drawer = initCartUI({
   onOpen: () => lenis && lenis.stop(),
   onClose: () => lenis && lenis.start(),
@@ -527,6 +530,7 @@ function renderBuy({ swap = false } = {}) {
     buy.shown = url;
   }
   img.alt = `${p.name} in ${colour.name}`;
+  $('[data-buy-details]').href = `product/?c=${p.id}&colour=${encodeURIComponent(colour.name.toLowerCase())}`;
 }
 
 const pickProduct = (id) => {
@@ -559,13 +563,15 @@ $$('[data-qty]').forEach((b) =>
     $('[data-qty-out]').textContent = String(buy.qty);
   }),
 );
+const buySku = () => PRODUCTS[buy.id].colours[buy.colour].sku;
 $('[data-buy-add]').addEventListener('click', () => {
-  if (!cart.add(buy.id, buy.colour, buy.qty)) return toast('That colour is sold out');
+  if (!cart.add(buySku(), buy.qty)) return toast('That colour is sold out, or already in your bag at the most we have');
   const c = PRODUCTS[buy.id].colours[buy.colour].name;
   toast(`${PRODUCTS[buy.id].name} in ${c} added to your bag`);
 });
 $('[data-buy-now]').addEventListener('click', () => {
-  if (cart.add(buy.id, buy.colour, buy.qty)) drawer.open();
+  cart.add(buySku(), buy.qty);
+  if (cart.count) drawer.open();
 });
 
 // "Add to bag" on product cards takes the first colour; choosing a colour is one click away
@@ -577,7 +583,7 @@ $$('[data-add]').forEach((b) => {
     return;
   }
   b.addEventListener('click', () => {
-    cart.add(b.dataset.add, idx, 1);
+    cart.add(PRODUCTS[b.dataset.add].colours[idx].sku, 1);
     toast(`${PRODUCTS[b.dataset.add].name} added to your bag`);
     drawer.open();
   });

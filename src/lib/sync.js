@@ -39,6 +39,15 @@ export const orderFromRow = (r) => ({
   note: r.note || '',
 });
 
+export const categoryFromRow = (r) => ({
+  id: r.id,
+  name: r.name,
+  code: r.code,
+  unit: r.unit,
+  description: r.description || '',
+  details: r.details || {},
+});
+
 export const contentFromRow = (r) => ({ ...r.published, publishedAt: r.published_at ? Date.parse(r.published_at) : null });
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -80,6 +89,16 @@ export function diff(prev, next) {
       id: 1,
       values: { published: strip(next.content), published_at: new Date(next.content.publishedAt || Date.now()).toISOString() },
     });
+  }
+
+  const oldCats = new Map((prev.categories || []).map((c) => [c.id, c]));
+  for (const c of next.categories || []) {
+    const old = oldCats.get(c.id);
+    if (!old) continue; // collections are fixed; their details are editable
+    const values = {};
+    if ((old.description || '') !== (c.description || '')) values.description = c.description || '';
+    if (!same(old.details || {}, c.details || {})) values.details = c.details || {};
+    if (Object.keys(values).length) ops.push({ table: 'categories', type: 'update', id: c.id, values });
   }
 
   if (prev.settings.lowStock !== next.settings.lowStock) {

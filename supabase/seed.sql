@@ -6,6 +6,11 @@ insert into public.categories (id, name, code, unit, sort) values
   ('laptop', 'Laptop Bags', 'LP', 'Laptop Bag', 2)
 on conflict (id) do nothing;
 
+-- Collection details (Phase 2). Only fills collections whose details are still empty.
+update public.categories set description = 'Small enough for the day, organised enough for everything in it. Carry it by the handles or across the body with the detachable strap.', details = '{"features":["Detachable strap: carry it by the handles or across the body","Inside pocket that keeps small things where you left them","Metal clips and rings that hold the strap and stay out of the way"],"specs":{"Dimensions":"","Material":"","Weight":"","Capacity":""},"care":""}'::jsonb where id = 'sling' and description = '';
+update public.categories set description = 'A slim crossbody with a wide webbing strap and a zip pocket on the front, for the things you reach for most.', details = '{"features":["Wide webbing strap that sits comfortably across the body","Zip pocket on the front","Slim profile that stays close"],"specs":{"Dimensions":"","Material":"","Weight":"","Capacity":""},"care":""}'::jsonb where id = 'mens' and description = '';
+update public.categories set description = 'A structured carry-all with room for a laptop and everything that travels with it, kept apart and easy to find.', details = '{"features":["A place each for a laptop, a bottle, a notebook and lunch","Twin handles","Front pocket for the things you need quickly"],"specs":{"Dimensions":"","Material":"","Weight":"","Capacity":"","Fits laptops up to":""},"care":""}'::jsonb where id = 'laptop' and description = '';
+
 insert into public.products (id, category, colour, hex, price, stock, status, image, description, sort) values
   ('VRT-SL-CRI', 'sling', 'Crimson', '#a82a2e', 1799, 14, 'active', 'asset:sling', 'Compact and organised, with a detachable strap so it carries by hand or across the body.', 0),
   ('VRT-SL-COB', 'sling', 'Cobalt', '#1f3fb0', 1799, 3, 'active', 'asset:sling', 'Compact and organised, with a detachable strap so it carries by hand or across the body.', 1),

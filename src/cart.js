@@ -1,15 +1,40 @@
-import { PRODUCTS, fmt } from './data.js';
+import { PRODUCTS, SKUS, bySku, fmt } from './data.js';
 
+/**
+ * The bag. Lines are { sku, qty }, so a line survives colours being added or reordered in the admin.
+ * Saved in this browser; when a customer is signed in, src/customer.js also keeps a copy on their account.
+ */
 const KEY = 'vertu.bag.v1';
 const listeners = new Set();
 let items = [];
 
-try {
-  const raw = localStorage.getItem(KEY);
-  if (raw) items = JSON.parse(raw).filter((i) => PRODUCTS[i.id]);
-} catch (e) {
-  items = [];
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || '[]');
+    return normalise(
+      raw.map((i) =>
+        // bags saved before Phase 2 stored { id: collection, colour: index }
+        i.sku ? i : { sku: PRODUCTS[i.id]?.colours[i.colour]?.sku, qty: i.qty },
+      ),
+    );
+  } catch (e) {
+    return [];
+  }
 }
+
+/** Drop unknown or sold-out SKUs, merge duplicates, cap at stock and at 9 per line. */
+export function normalise(list) {
+  const out = new Map();
+  for (const i of list || []) {
+    const hit = i && SKUS.get(i.sku);
+    if (!hit) continue;
+    const qty = Math.min(9, hit.colour.stock, (out.get(i.sku) || 0) + Math.max(0, Math.floor(Number(i.qty) || 0)));
+    if (qty > 0) out.set(i.sku, qty);
+  }
+  return [...out].map(([sku, qty]) => ({ sku, qty }));
+}
+
+items = load();
 
 const save = () => {
   try {
@@ -19,8 +44,6 @@ const save = () => {
   }
 };
 const emit = () => listeners.forEach((fn) => fn(cart));
-const colourOf = (i) => PRODUCTS[i.id].colours[i.colour] || PRODUCTS[i.id].colours[0];
-const unitPrice = (i) => colourOf(i).price;
 
 export const cart = {
   get items() {
@@ -30,28 +53,43 @@ export const cart = {
     return items.reduce((n, i) => n + i.qty, 0);
   },
   get total() {
-    return items.reduce((n, i) => n + unitPrice(i) * i.qty, 0);
+    return items.reduce((n, i) => n + (bySku(i.sku)?.colour.price || 0) * i.qty, 0);
   },
   subscribe(fn) {
     listeners.add(fn);
     fn(cart);
+    return () => listeners.delete(fn);
   },
-  add(id, colour = 0, qty = 1) {
-    const stock = PRODUCTS[id].colours[colour]?.stock ?? 0;
-    const found = items.find((i) => i.id === id && i.colour === colour);
-    const next = Math.min(stock, (found ? found.qty : 0) + qty);
-    if (next <= 0) return false;
+  /** Returns false if nothing could be added (sold out, or already at the stock limit). */
+  add(sku, qty = 1) {
+    const hit = bySku(sku);
+    if (!hit) return false;
+    const found = items.find((i) => i.sku === sku);
+    const before = found ? found.qty : 0;
+    const next = Math.min(9, hit.colour.stock, before + qty);
+    if (next <= before) return false;
     if (found) found.qty = next;
-    else items.push({ id, colour, qty: next });
+    else items.push({ sku, qty: next });
     save();
     emit();
     return true;
   },
-  setQty(id, colour, qty) {
-    const found = items.find((i) => i.id === id && i.colour === colour);
+  setQty(sku, qty) {
+    const found = items.find((i) => i.sku === sku);
     if (!found) return;
-    found.qty = Math.min(qty, PRODUCTS[id].colours[colour]?.stock ?? qty);
+    found.qty = Math.min(9, qty, bySku(sku)?.colour.stock ?? qty);
     if (found.qty <= 0) items = items.filter((i) => i !== found);
+    save();
+    emit();
+  },
+  /** Replace every line (used when merging with the bag saved on an account). */
+  replace(list) {
+    items = normalise(list);
+    save();
+    emit();
+  },
+  clear() {
+    items = [];
     save();
     emit();
   },
@@ -67,7 +105,7 @@ export function toast(message) {
   toastTimer = setTimeout(() => el.classList.remove('is-on'), 2600);
 }
 
-export function initCartUI({ onOpen, onClose } = {}) {
+export function initCartUI({ onOpen, onClose, base = '' } = {}) {
   const root = document.getElementById('cart');
   const list = root.querySelector('.cart__list');
   const empty = root.querySelector('.cart__empty');
@@ -100,32 +138,30 @@ export function initCartUI({ onOpen, onClose } = {}) {
   });
 
   root.querySelector('[data-checkout]').addEventListener('click', () => {
-    toast('Checkout is not connected yet. Hook your payment provider into src/cart.js.');
+    toast('Checkout opens soon. Payments are being connected.');
   });
 
   list.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
-    const li = btn.closest('li');
-    const id = li.dataset.id;
-    const colour = Number(li.dataset.colour);
-    const line = items.find((i) => i.id === id && i.colour === colour);
+    const sku = btn.closest('li').dataset.sku;
+    const line = items.find((i) => i.sku === sku);
     if (!line) return;
-    if (btn.dataset.act === 'inc') cart.setQty(id, colour, line.qty + 1);
-    if (btn.dataset.act === 'dec') cart.setQty(id, colour, line.qty - 1);
-    if (btn.dataset.act === 'remove') cart.setQty(id, colour, 0);
+    if (btn.dataset.act === 'inc' && !cart.add(sku, 1)) toast('That’s all we have in this colour right now');
+    if (btn.dataset.act === 'dec') cart.setQty(sku, line.qty - 1);
+    if (btn.dataset.act === 'remove') cart.setQty(sku, 0);
   });
 
   cart.subscribe(() => {
     counters.forEach((c) => (c.textContent = String(cart.count)));
     list.innerHTML = items
       .map((i) => {
-        const p = PRODUCTS[i.id];
-        const c = colourOf(i);
-        return `<li data-id="${i.id}" data-colour="${i.colour}">
-          <img src="${c.img || p.img}" alt="" width="72" height="90" />
+        const { product: p, colour: c } = bySku(i.sku);
+        const href = `${base}product/?c=${p.id}&colour=${encodeURIComponent(c.name.toLowerCase())}`;
+        return `<li data-sku="${i.sku}">
+          <a href="${href}" tabindex="-1" aria-hidden="true"><img src="${c.img || p.img}" alt="" width="72" height="90" /></a>
           <div class="cart__info">
-            <p class="cart__name">${p.name}</p>
+            <p class="cart__name"><a href="${href}">${p.name}</a></p>
             <p class="cart__meta"><span class="dot" style="background:${c.hex}"></span>${c.name}</p>
             <div class="qty" role="group" aria-label="Quantity for ${p.name}, ${c.name}">
               <button type="button" data-act="dec" aria-label="Decrease quantity">&minus;</button>

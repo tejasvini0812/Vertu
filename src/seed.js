@@ -11,6 +11,49 @@ export const CATEGORIES = [
 ];
 export const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered'];
 
+/**
+ * Collection details shown on product pages. Features are taken from what the photographs show.
+ * Specs are left empty on purpose: the brand deck has no dimensions or materials. Fill them in from
+ * the admin (Products -> Collection details); empty specs are simply not shown.
+ */
+export const CATEGORY_DETAILS = {
+  sling: {
+    description:
+      'Small enough for the day, organised enough for everything in it. Carry it by the handles or across the body with the detachable strap.',
+    details: {
+      features: [
+        'Detachable strap: carry it by the handles or across the body',
+        'Inside pocket that keeps small things where you left them',
+        'Metal clips and rings that hold the strap and stay out of the way',
+      ],
+      specs: { Dimensions: '', Material: '', Weight: '', Capacity: '' },
+      care: '',
+    },
+  },
+  mens: {
+    description:
+      'A slim crossbody with a wide webbing strap and a zip pocket on the front, for the things you reach for most.',
+    details: {
+      features: ['Wide webbing strap that sits comfortably across the body', 'Zip pocket on the front', 'Slim profile that stays close'],
+      specs: { Dimensions: '', Material: '', Weight: '', Capacity: '' },
+      care: '',
+    },
+  },
+  laptop: {
+    description:
+      'A structured carry-all with room for a laptop and everything that travels with it, kept apart and easy to find.',
+    details: {
+      features: [
+        'A place each for a laptop, a bottle, a notebook and lunch',
+        'Twin handles',
+        'Front pocket for the things you need quickly',
+      ],
+      specs: { Dimensions: '', Material: '', Weight: '', Capacity: '', 'Fits laptops up to': '' },
+      care: '',
+    },
+  },
+};
+
 const BASE = [
   ['Crimson', '#a82a2e'],
   ['Cobalt', '#1f3fb0'],
@@ -148,6 +191,7 @@ export function seed(now = Date.now()) {
   return {
     version: 1,
     seededAt: now,
+    categories: CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) })),
     settings: { lowStock: 5 },
     products,
     orders,

@@ -38,7 +38,7 @@ export function renderProducts(root, params) {
     <header class="page-head">
       <div><h1>Products &amp; inventory</h1>
       <p>Each colour is its own item with its own price and stock. Edit price or stock right in the table.</p></div>
-      <div class="page-head__actions"><button class="btn btn--ink" data-add>${icons.plus}Add product</button></div>
+      <div class="page-head__actions"><button class="btn btn--ghost" data-details>Collection details</button><button class="btn btn--ink" data-add>${icons.plus}Add product</button></div>
     </header>
     <div class="toolbar">
       <div class="tabs" role="tablist" aria-label="Collection">
@@ -62,6 +62,7 @@ export function renderProducts(root, params) {
         <td class="muted">${catName(p.category)}</td>
         <td class="r"><input class="cell-input" data-price type="number" min="0" step="1" value="${p.price}" aria-label="Price for ${esc(p.colour)} ${p.id}" /></td>
         <td class="r"><div class="stock-cell">
+          <span class="pill" data-waiting hidden></span>
           ${p.stock === 0 ? '<span class="pill pill--ink">Sold out</span>' : p.stock <= th ? `<span class="pill pill--line">Low</span>` : ''}
           <div class="stepper"><button type="button" data-step="-1" aria-label="Decrease stock">&minus;</button>
           <input data-stock type="number" min="0" step="1" value="${p.stock}" aria-label="Stock for ${esc(p.colour)} ${p.id}" />
@@ -77,6 +78,23 @@ export function renderProducts(root, params) {
   flashId = null;
   enter(root);
   wire(root, on);
+  if (LIVE) showWaiting(root);
+}
+
+// "3 waiting": shoppers who asked to be emailed when a sold-out colour returns
+async function showWaiting(root) {
+  const { data, error } = await supabase.from('stock_alerts').select('sku').is('notified_at', null);
+  if (error || !root.isConnected) return;
+  const n = {};
+  data.forEach((r) => (n[r.sku] = (n[r.sku] || 0) + 1));
+  $$('tr[data-id]', root).forEach((tr) => {
+    const k = n[tr.dataset.id];
+    const pill = $('[data-waiting]', tr);
+    if (!pill || !k) return;
+    pill.hidden = false;
+    pill.textContent = `${k} waiting`;
+    pill.title = `${k} ${k === 1 ? 'person has' : 'people have'} asked to be emailed when this is back in stock`;
+  });
 }
 
 function wire(root, on) {
@@ -101,6 +119,7 @@ function wire(root, on) {
     n.setSelectionRange(pos, pos);
   });
   $('[data-add]', root).addEventListener('click', () => openForm());
+  $('[data-details]', root).addEventListener('click', () => openDetails(filter === 'all' ? 'sling' : filter));
 
   const idOf = (el) => el.closest('tr').dataset.id;
   const commitNumber = (el, key, label) => {
@@ -275,4 +294,56 @@ async function loadHistory(sku, ul) {
         )
         .join('')
     : '<li class="muted">No changes recorded yet.</li>';
+}
+
+// ---------------------------------------------------------------- collection details (product pages)
+function openDetails(catId) {
+  const cats = getState().categories;
+  const cat = structuredClone(cats.find((c) => c.id === catId) || cats[0]);
+  const d = cat.details || {};
+  const specs = Object.entries(d.specs || {});
+  const body = `
+    <form id="dform" class="field" style="gap:22px" novalidate>
+      <div class="field"><label for="d-cat">Collection</label>
+        <select id="d-cat" class="select">${cats.map((c) => `<option value="${c.id}" ${c.id === cat.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="d-desc">Description</label><textarea id="d-desc" class="textarea" maxlength="2000">${esc(cat.description || '')}</textarea>
+        <small>The opening paragraph on the product page.</small></div>
+      <div class="field"><label for="d-feat">Design details</label><textarea id="d-feat" class="textarea" style="min-height:130px">${esc((d.features || []).join('\n'))}</textarea>
+        <small>One per line.</small></div>
+      <div class="field"><span class="label">Specifications</span><small>Leave a value empty to hide that row.</small>
+        <div data-specs style="display:grid;gap:10px">${specs
+          .map(([k, v]) => `<div class="row2"><input class="input" data-k value="${esc(k)}" aria-label="Specification name" /><input class="input" data-v value="${esc(v)}" placeholder="e.g. 32 × 24 × 10 cm" aria-label="${esc(k)} value" /></div>`)
+          .join('')}</div>
+        <button type="button" class="text-btn" data-add-spec style="justify-self:start">Add a row</button></div>
+      <div class="field"><label for="d-care">Care</label><textarea id="d-care" class="textarea" style="min-height:84px" maxlength="600">${esc(d.care || '')}</textarea></div>
+    </form>`;
+  const foot = `<button class="btn btn--ghost" data-drawer-close type="button">Cancel</button><button class="btn btn--ink" type="submit" form="dform">Save details</button>`;
+  openDrawer({ title: 'Collection details', sub: 'Shown on the product page for every colour in the collection', body, foot });
+  const dr = drawerEl;
+  $('#d-cat', dr).addEventListener('change', (e) => openDetails(e.target.value));
+  $('[data-add-spec]', dr).addEventListener('click', () => {
+    $('[data-specs]', dr).insertAdjacentHTML('beforeend', '<div class="row2"><input class="input" data-k placeholder="Name" aria-label="Specification name" /><input class="input" data-v aria-label="Value" /></div>');
+    $('[data-specs] .row2:last-child [data-k]', dr).focus();
+  });
+  $('#dform', dr).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const specsOut = {};
+    $$('[data-specs] .row2', dr).forEach((r) => {
+      const k = $('[data-k]', r).value.trim();
+      if (k) specsOut[k] = $('[data-v]', r).value.trim();
+    });
+    const details = {
+      features: $('#d-feat', dr).value.split('\n').map((x) => x.trim()).filter(Boolean),
+      specs: specsOut,
+      care: $('#d-care', dr).value.trim(),
+    };
+    if (
+      safeSave((st) => {
+        const c = st.categories.find((x) => x.id === cat.id);
+        c.description = $('#d-desc', dr).value.trim();
+        c.details = details;
+      }, `${cat.name} details saved`)
+    )
+      closeDrawer();
+  });
 }

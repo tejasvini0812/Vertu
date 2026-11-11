@@ -42,15 +42,18 @@ The site runs in one of two modes:
 
 1. **Create a project** at supabase.com. Pick the Mumbai (ap-south-1) region for Indian customers.
 2. **Create the database.** In the SQL editor, run in order:
-   - `supabase/migrations/20261112000000_phase1_core.sql`: tables, access rules, triggers, storage bucket
-   - `supabase/seed.sql`: the 15 starting products and the editorial content
+   - `supabase/migrations/20261112000000_phase1_core.sql`: catalogue, orders, staff, access rules, storage bucket
+   - `supabase/migrations/20261112010000_phase2_customers.sql`: customer profiles, addresses, wishlist, saved bag, back-in-stock alerts, collection details
+   - `supabase/seed.sql`: the 15 starting products, collection details and editorial content (safe to re-run)
    - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
 
    With the Supabase CLI instead: `supabase link`, then `supabase db push`, then run `seed.sql`.
 3. **Create your owner account.** Authentication → Users → Add user (tick *Auto confirm*). Then edit the email in `supabase/bootstrap_owner.sql` and run it.
 4. **Auth settings** (Authentication → URL configuration and Sign in / Providers):
-   - Site URL: your domain. Add `https://yourdomain.com/admin/` (and `http://localhost:5173/admin/` for development) to *Redirect URLs*, so password-reset links work.
-   - Turn **off** "Allow new users to sign up" until customer accounts arrive in Phase 2. Staff accounts are added by an owner.
+   - Site URL: your domain. Add `https://yourdomain.com/admin/` and `https://yourdomain.com/account/` (and the same on `http://localhost:5173` for development) to *Redirect URLs*.
+   - Keep "Allow new users to sign up" **on**: shoppers create accounts themselves. Being signed up gives no admin rights; only owners can grant those.
+   - **Email template for sign-in codes:** Authentication → Emails → *Magic Link*. Add `{{ .Token }}` to the body (for example "Your VERTU code is {{ .Token }}"), so shoppers get a 6-digit code as well as the link.
+   - Optional **Google sign-in:** enable the Google provider (it needs a Google Cloud OAuth client), then set `VITE_AUTH_GOOGLE=true`.
    - Check that TOTP multi-factor is enabled (it is by default).
    - Set up custom SMTP (Authentication → Emails) before launch. The built-in sender is rate-limited and meant for testing.
 5. **Add the keys.** Copy `.env.example` to `.env.local` and fill in the project URL and anon/publishable key (Project Settings → API). In production, set the same two variables in your host (Vercel, Netlify and so on).
@@ -58,16 +61,32 @@ The site runs in one of two modes:
 
 **Adding staff:** create their user in Supabase (step 3), then Settings → Team → add their email as Staff or Owner. They set up two-step verification on first sign-in.
 
+## Shopper pages (Phase 2)
+
+| Page | What it does |
+|---|---|
+| `/shop/` | Every colour of every bag. Search, collection and colour filters, in-stock only, sort. Filters live in the URL, so a filtered view can be shared. |
+| `/product/?c=sling&colour=crimson` | Gallery, colour picker with per-colour price and stock, quantity, add to bag, wishlist, delivery estimate by PIN code, design details and specs, related bags. Sold-out colours offer an email alert. Includes Google-readable product data (schema.org). |
+| `/account/` | Sign in with an emailed code (or Google). Orders with progress, wishlist, address book (up to 10, one default), profile with marketing consent, and requests to export or delete personal data (DPDP Act). |
+
+- **Bag and wishlist:** saved in the browser for guests. Signing in merges them into the account so nothing is lost, and keeps them in sync across devices. Signing out clears them from that browser. Bag lines are stored by SKU, and bags saved before Phase 2 are converted automatically.
+- **Collection details** (description, design details, specifications, care): edited in the admin under Products → *Collection details*. Specs are blank to start, because the brand deck has none. Empty rows aren't shown.
+- **Back-in-stock alerts** are collected now. The admin shows "N waiting" next to sold-out colours. The emails themselves are sent in Phase 4.
+- **Delivery estimates** are rough PIN-code zones in `src/delivery.js` until the courier integration (Phase 5) gives real ones. Edit the zones once you know where orders ship from.
+
 ### What each role can do
 
 | | Shopper / public | Staff | Owner |
 |---|---|---|---|
 | See active products and published editorial | ✓ | ✓ | ✓ |
+| Own profile, addresses, wishlist, bag, orders (own only) | ✓ (signed in) | ✓ | ✓ |
+| Ask for a back-in-stock email | ✓ | ✓ | ✓ |
 | See draft products, orders, customer details | | ✓ | ✓ |
-| Edit products, price, stock, images; add products | | ✓ | ✓ |
+| Edit products, price, stock, images; add products; collection details | | ✓ | ✓ |
+| See back-in-stock requests and saved addresses | | ✓ | ✓ |
 | Change order status; publish editorial | | ✓ | ✓ |
 | Remove products; change the low-stock threshold | | | ✓ |
-| Manage the team; see the activity log | | | ✓ |
+| Manage the team; see the activity log and data requests | | | ✓ |
 
 These rules are enforced by the database (row level security in the migration), not only by hiding buttons. Admin rights also require a two-step-verified session, so a stolen password alone is not enough.
 
@@ -82,11 +101,10 @@ These rules are enforced by the database (row level security in the migration), 
 
 - `npm test` runs both suites.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
-- `npm run test:db`: runs the real migration and seed in an in-process Postgres and checks 43 access rules (shopper, staff with and without two-step verification, owner).
+- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 78 access rules (guest, shopper, staff with and without two-step verification, owner).
 
 ### Still to do (later phases)
 
-- **Phase 2:** customer accounts, product pages, search.
 - **Phase 3:** checkout and Razorpay. Orders will be created by a server function that re-checks prices and stock. Browsers can never create orders.
 - **Phase 4:** order and shipping emails.
 - **Phase 5 onwards:** shipping (Shiprocket), invoices, legal pages, security hardening, SEO and monitoring.

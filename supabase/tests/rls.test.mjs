@@ -2,14 +2,15 @@
 // then checks what shoppers, staff (with and without two-step verification) and owners can do.
 // Run: npm run test:db
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 const R = new URL('../', import.meta.url).pathname;
 const db = new PGlite();
 await db.exec(readFileSync(new URL('./supabase-stubs.sql', import.meta.url), 'utf8'));
-await db.exec(readFileSync(R + 'migrations/20261112000000_phase1_core.sql', 'utf8'));
+for (const f of readdirSync(R + 'migrations').sort()) await db.exec(readFileSync(R + 'migrations/' + f, 'utf8'));
 await db.exec(readFileSync(R + 'seed.sql', 'utf8'));
 await db.exec(readFileSync(R + 'seed.sql', 'utf8')); // idempotent
 await db.exec(readFileSync(R + 'sample_orders.sql', 'utf8'));
+await db.exec(`insert into public.profiles (id) select id from auth.users on conflict do nothing;`);
 await db.exec(`insert into public.admin_users (user_id, role) values
   ('00000000-0000-0000-0000-00000000000a','owner'), ('00000000-0000-0000-0000-00000000000b','staff');`);
 
@@ -31,7 +32,8 @@ async function expect(name, fn, check) {
     ok ? pass++ : fail++;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  -> ' + JSON.stringify(r.rows ?? r).slice(0, 200)}`);
   } catch (e) {
-    const ok = check(null, e);
+    let ok = false;
+    try { ok = check(null, e); } catch (_) { ok = false; }
     ok ? pass++ : fail++;
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  -> error: ' + e.message}`);
   }
@@ -98,5 +100,51 @@ await expect('activity shows who did what', () => as(OWNER, 'aal2', `select emai
 });
 await expect('anon cannot call team functions', () => as(null, null, `select * from team_list()`), errored());
 await expect('order numbers continue from 10500', () => db.query(`insert into orders (customer_name, customer_email) values ('a','a@b.c') returning id`), (r) => r.rows[0].id === 'VRT-10500');
+
+// ---------------------------------------------------------------- Phase 2: customers
+const OTHER = '00000000-0000-0000-0000-00000000000d';
+await db.exec(`insert into auth.users (id, email, raw_user_meta_data) values ('${OTHER}', 'other@vertu.test', '{"full_name":"Other Person"}')`);
+await expect('new account gets a profile with their name', () => db.query(`select full_name from profiles where id='${OTHER}'`), (r) => r.rows[0]?.full_name === 'Other Person');
+await expect('collection details readable by anyone', () => as(null, null, `select details->'features' f from categories where id='sling'`), (r) => r.rows[0]?.f?.length === 3);
+await expect('shopper cannot edit collection details', () => as(SHOP, 'aal2', `update categories set description='x' where id='sling'`), denied);
+await expect('staff edits collection copy', () => as(STAFF, 'aal2', `update categories set description=description where id='mens' returning id`), rows(1));
+await expect('staff cannot add collections', () => as(STAFF, 'aal2', `insert into categories (id,name,code,unit) values ('tote','Totes','TT','Tote')`), errored('row-level security'));
+await expect('owner edits collection details', () => as(OWNER, 'aal2', `update categories set details = jsonb_set(details,'{specs,Material}','"Cotton canvas"') where id='sling' returning id`), rows(1));
+await expect('shopper updates own profile', () => as(SHOP, 'aal1', `update profiles set full_name='Shop Per', phone='+919876543210' returning id`), rows(1));
+await expect('bad phone rejected', () => as(SHOP, 'aal1', `update profiles set phone='12345'`), errored('check'));
+await expect('shopper cannot read other profiles', () => as(SHOP, 'aal1', `select id from profiles`), rows(1));
+await expect('shopper cannot change profile id', () => as(SHOP, 'aal1', `update profiles set id='${OTHER}'`), errored('permission'));
+const addr = (who, extra = '') => `insert into addresses (user_id, full_name, phone, line1, city, state, pin${extra ? ', is_default' : ''}) values ('${who}', 'A', '+919876543210', '1 Road', 'Pune', 'Maharashtra', '411001'${extra ? ', ' + extra : ''}) returning id, is_default`;
+await expect('first address becomes default', () => as(SHOP, 'aal1', addr(SHOP)), (r) => r.rows[0].is_default === true);
+await expect('new default unsets old default', async () => { await as(SHOP, 'aal1', addr(SHOP, 'true')); return as(SHOP, 'aal1', `select count(*)::int n from addresses where is_default`); }, (r) => r.rows[0].n === 1);
+await expect('cannot add address to someone else', () => as(SHOP, 'aal1', addr(OTHER)), errored('row-level security'));
+await expect('bad PIN rejected', () => as(SHOP, 'aal1', `insert into addresses (full_name, phone, line1, city, state, pin) values ('A','+919876543210','x','y','z','012345')`), errored('check'));
+await expect('others cannot see my addresses', () => as(OTHER, 'aal1', `select * from addresses`), rows(0));
+await expect('staff can read addresses for orders', () => as(STAFF, 'aal2', `select * from addresses`), rows(2));
+await expect('address limit of 10', async () => { for (let i = 0; i < 8; i++) await as(SHOP, 'aal1', addr(SHOP)); return as(SHOP, 'aal1', addr(SHOP)); }, errored('address_limit'));
+await expect('wishlist add own', () => as(SHOP, 'aal1', `insert into wishlist_items (sku) values ('VRT-SL-CRI') returning sku`), rows(1));
+await expect('wishlist private', () => as(OTHER, 'aal1', `select * from wishlist_items`), rows(0));
+await expect('anon cannot use wishlist', () => as(null, null, `insert into wishlist_items (user_id, sku) values ('${SHOP}','VRT-SL-COB')`), errored());
+await expect('cart saved for own account', () => as(SHOP, 'aal1', `insert into carts (items) values ('[{"sku":"VRT-SL-CRI","qty":2}]') returning user_id`), rows(1));
+await expect('cart private', () => as(OTHER, 'aal1', `select * from carts`), rows(0));
+await expect('oversized cart rejected', () => as(OTHER, 'aal1', `insert into carts (items) select jsonb_agg(jsonb_build_object('sku','x','qty',1)) from generate_series(1,51)`), errored('check'));
+await expect('anon asks for back-in-stock alert', () => as(null, null, `insert into stock_alerts (sku, email) values ('VRT-SL-MUS', 'fan@example.com')`), affected(1));
+await expect('duplicate alert is a unique violation', () => as(null, null, `insert into stock_alerts (sku, email) values ('VRT-SL-MUS', 'fan@example.com')`), errored('duplicate'));
+await expect('no alerts for draft products', () => as(null, null, `insert into stock_alerts (sku, email) values ('VRT-LP-FOR', 'fan@example.com')`), errored('row-level security'));
+await expect('alert cannot be pre-marked as sent', () => as(null, null, `insert into stock_alerts (sku, email, notified_at) values ('VRT-SL-COB', 'x@example.com', now())`), errored('row-level security'));
+await expect('anon cannot read alert emails', () => as(null, null, `select * from stock_alerts`), rows(0));
+await expect('staff sees waiting alerts', () => as(STAFF, 'aal2', `select * from stock_alerts`), rows(1));
+await expect('customer reads own orders only', async () => {
+  await db.exec(`update orders set customer_id='${SHOP}' where id in ('VRT-10427','VRT-10426')`);
+  return as(SHOP, 'aal1', `select o.id, count(i.*)::int n from orders o join order_items i on i.order_id=o.id group by o.id`);
+}, (r) => r.rows.length === 2 && r.rows.every((x) => x.n > 0));
+await expect('customer cannot change own order status', () => as(SHOP, 'aal1', `update orders set status='Delivered' where id='VRT-10427'`), denied);
+await expect('customer requests deletion', () => as(SHOP, 'aal1', `insert into data_requests (email, kind) values ('shopper@vertu.test','delete') returning id`), rows(1));
+await expect('customer cannot mark own request resolved', () => as(SHOP, 'aal1', `update data_requests set resolved_at=now()`), denied);
+await expect('owner sees deletion requests', () => as(OWNER, 'aal2', `select * from data_requests`), rows(1));
+await expect('deleting an account removes its data', async () => {
+  await db.exec(`delete from auth.users where id='${SHOP}'`);
+  return db.query(`select (select count(*) from addresses where user_id='${SHOP}')::int + (select count(*) from carts where user_id='${SHOP}')::int + (select count(*) from wishlist_items where user_id='${SHOP}')::int + (select count(*) from profiles where id='${SHOP}')::int n`);
+}, (r) => r.rows[0].n === 0);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

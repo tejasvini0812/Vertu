@@ -104,3 +104,16 @@ test('order rows map to the admin shape with items in order', () => {
   assert.equal(o.customer.city, 'Pune');
   assert.equal(o.note, '');
 });
+
+test('collection details edits become a categories update', () => {
+  const a = base();
+  const b = clone(a);
+  b.categories[0].details.specs.Material = 'Cotton canvas';
+  b.categories[0].description = 'New copy';
+  const ops = diff(a, b);
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0].table, 'categories');
+  assert.equal(ops[0].id, 'sling');
+  assert.equal(ops[0].values.details.specs.Material, 'Cotton canvas');
+  assert.equal(ops[0].values.description, 'New copy');
+});

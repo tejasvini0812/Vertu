@@ -1284,3 +1284,44 @@ main > section > *,
   background: var(--ink);
   transform: rotate(45deg);
 }
+
+/* quick-buy: buy now + product page link */
+.buy__more {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+/* account link: words on wide screens, an icon on phones */
+.nav__acct-icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+@media (max-width: 720px) {
+  .nav__side--end {
+    gap: 16px;
+    align-items: center;
+  }
+  .nav .nav__acct {
+    display: inline-grid;
+    place-items: center;
+  }
+  .nav__acct-icon {
+    display: block;
+  }
+  .nav__acct [data-account-label] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .nav .nav__acct::after {
+    display: none;
+  }
+}

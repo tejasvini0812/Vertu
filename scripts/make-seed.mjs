@@ -1,7 +1,7 @@
 // Generates supabase/seed.sql (catalogue + editorial) and supabase/sample_orders.sql (optional, staging only)
 // from src/seed.js, so the database starts with exactly what the demo shows.
 import { writeFileSync } from 'node:fs';
-import { seed, CATEGORIES } from '../src/seed.js';
+import { seed, CATEGORIES, CATEGORY_DETAILS } from '../src/seed.js';
 
 const q = (v) => (v === null || v === undefined ? 'null' : `'${String(v).replace(/'/g, "''")}'`);
 const s = seed(Date.parse('2026-11-12T06:00:00Z'));
@@ -10,6 +10,12 @@ let out = `-- Starting catalogue and editorial content. Safe to run more than on
 out += `insert into public.categories (id, name, code, unit, sort) values\n`;
 out += CATEGORIES.map((c, i) => `  (${q(c.id)}, ${q(c.name)}, ${q(c.code)}, ${q(c.unit)}, ${i})`).join(',\n');
 out += `\non conflict (id) do nothing;\n\n`;
+out += `-- Collection details (Phase 2). Only fills collections whose details are still empty.\n`;
+for (const c of CATEGORIES) {
+  const d = CATEGORY_DETAILS[c.id];
+  out += `update public.categories set description = ${q(d.description)}, details = ${q(JSON.stringify(d.details))}::jsonb where id = ${q(c.id)} and description = '';\n`;
+}
+out += `\n`;
 out += `insert into public.products (id, category, colour, hex, price, stock, status, image, description, sort) values\n`;
 out += s.products
   .map((p, i) => `  (${[p.id, p.category, p.colour, p.hex].map(q).join(', ')}, ${p.price}, ${p.stock}, ${q(p.status)}, ${q(p.image)}, ${q(p.description)}, ${i})`)

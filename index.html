@@ -26,12 +26,13 @@
 
     <header class="nav" id="nav">
       <nav class="nav__side" aria-label="Primary">
-        <a href="#shop">Shop</a>
+        <a href="shop/">Shop</a>
         <a href="#collections">Collections</a>
         <a href="#craft">Our craft</a>
       </nav>
       <a class="logo" href="#top" aria-label="VERTU, back to top"><span></span></a>
       <div class="nav__side nav__side--end">
+        <a href="account/" class="nav__acct" data-account-link><svg class="nav__acct-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span data-account-label>Account</span></a>
         <button type="button" class="nav__bag" data-cart-open aria-label="Open your bag">
           Bag <span aria-hidden="true">(<span data-cart-count>0</span>)</span>
         </button>
@@ -386,7 +387,7 @@
                 </div>
                 <button type="button" class="btn btn--accent" data-buy-add data-magnetic>Add to bag</button>
               </div>
-              <button type="button" class="text-link" data-buy-now>Buy now</button>
+              <p class="buy__more"><button type="button" class="text-link" data-buy-now>Buy now</button><a class="text-link" href="product/?c=sling" data-buy-details>Full details</a></p>
             </div>
           </div>
         </div>
@@ -400,7 +401,8 @@
       </div>
       <div class="footer__cols">
         <nav aria-label="Footer">
-          <a href="#shop">Shop</a>
+          <a href="shop/">Shop</a>
+          <a href="account/">Account</a>
           <a href="#collections">Collections</a>
           <a href="#craft">Our craft</a>
         </nav>

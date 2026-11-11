@@ -6,18 +6,18 @@ import { getState, ready, resolveImage, CATEGORIES } from './store.js';
 import { seed } from './seed.js';
 
 /**
- * The storefront catalogue is built from the shared store (edited in /admin).
- * Each colour is one SKU with its own price, stock and image.
- * If a category has no active SKUs the seed data is used so the page never breaks.
+ * The storefront catalogue, built from the shared store (edited in /admin).
+ * A "product" is a collection (Sling Bag, Men's Sling Bag, Laptop Bag); each colour is one SKU
+ * with its own price, stock and image. If a collection has no active SKUs the seed is used so pages never break.
  */
-// Live mode: fetch the catalogue and editorial content before the page builds.
 await ready('public');
 const state = getState();
-const fallback = seed().products;
+const fallback = seed();
 
 function build(cat) {
   let skus = state.products.filter((p) => p.category === cat.id && p.status === 'active');
-  if (!skus.length) skus = fallback.filter((p) => p.category === cat.id);
+  if (!skus.length) skus = fallback.products.filter((p) => p.category === cat.id);
+  const info = (state.categories || []).find((c) => c.id === cat.id) || fallback.categories.find((c) => c.id === cat.id);
   const colours = skus.map((p) => ({
     sku: p.id,
     name: p.colour,
@@ -30,17 +30,24 @@ function build(cat) {
   return {
     id: cat.id,
     name: cat.unit,
+    collection: cat.name,
     price: Math.min(...colours.map((c) => c.price)),
     img: colours[0].img,
     colours,
     blurb: colours[0].description,
+    description: info?.description || colours[0].description,
+    details: info?.details || {},
   };
 }
 
 export const PRODUCTS = Object.fromEntries(CATEGORIES.map((c) => [c.id, build(c)]));
 
-const { hero, collections, announcement } = state.content;
+/** sku -> { product, colour, index } for every buyable colour */
+export const SKUS = new Map();
+for (const p of Object.values(PRODUCTS)) p.colours.forEach((c, i) => SKUS.set(c.sku, { product: p, colour: c, index: i }));
+export const bySku = (sku) => SKUS.get(sku) || null;
 
+const { hero, collections, announcement } = state.content;
 export const CONTENT = { hero, collections, announcement };
 
 export const HERO_SLIDES = hero.slides
@@ -48,13 +55,18 @@ export const HERO_SLIDES = hero.slides
   .map((s) => ({ src: resolveImage(s.image), caption: s.caption || '' }));
 
 export const CRAFT_IMAGES = [organiserImg, pocketImg, hardwareImg, laptopImg];
+export const DETAIL_SHOTS = [
+  { src: organiserImg, alt: 'Inside a VERTU bag: separate places for a laptop, a bottle and a notebook' },
+  { src: pocketImg, alt: 'A cream inside pocket stitched to the lining of a mustard VERTU bag' },
+  { src: hardwareImg, alt: 'A metal clip and ring attaching the strap inside a VERTU bag' },
+];
 
 export const fmt = (n) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(n);
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
-/** First colour index that can actually be bought, or -1 if the whole category is sold out. */
+/** First colour index that can actually be bought, or -1 if the whole collection is sold out. */
 export const firstInStock = (id) => PRODUCTS[id].colours.findIndex((c) => c.stock > 0);
+
+/** Link to a product page from any page. `base` is '' on the home page and '../' on sub-pages. */
+export const productHref = (id, colourName, base = '') =>
+  `${base}product/?c=${encodeURIComponent(id)}${colourName ? `&colour=${encodeURIComponent(colourName.toLowerCase())}` : ''}`;

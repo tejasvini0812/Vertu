@@ -19,7 +19,13 @@ export default defineConfig({
     rollupOptions: {
       input: single
         ? resolve(admin ? 'admin/index.html' : 'index.html')
-        : { main: resolve('index.html'), admin: resolve('admin/index.html') },
+        : {
+            main: resolve('index.html'),
+            shop: resolve('shop/index.html'),
+            product: resolve('product/index.html'),
+            account: resolve('account/index.html'),
+            admin: resolve('admin/index.html'),
+          },
     },
   },
 });

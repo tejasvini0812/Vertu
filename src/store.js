@@ -1,6 +1,6 @@
 import { seed } from './seed.js';
 import { LIVE, supabase } from './lib/supabase.js';
-import { diff, apply, productFromRow, orderFromRow, contentFromRow } from './lib/sync.js';
+import { diff, apply, productFromRow, orderFromRow, contentFromRow, categoryFromRow } from './lib/sync.js';
 import slingImg from './assets/img/sling.jpg';
 import mensImg from './assets/img/mens.jpg';
 import laptopImg from './assets/img/laptop.jpg';
@@ -9,6 +9,7 @@ import hero2 from './assets/img/hero-2.jpg';
 import hero3 from './assets/img/hero-3.jpg';
 
 export { CATEGORIES, STATUSES, skuFor } from './seed.js';
+import { CATEGORIES as BASE_CATEGORIES, CATEGORY_DETAILS } from './seed.js';
 export { LIVE, supabase };
 
 /**
@@ -46,7 +47,11 @@ function loadLocal() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.version === 1) return s;
+      if (s && s.version === 1) {
+        // demo data saved before Phase 2 has no collection details
+        if (!s.categories) s.categories = BASE_CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) }));
+        return s;
+      }
     }
   } catch (e) {
     /* fall through to a fresh seed */
@@ -58,7 +63,7 @@ function loadLocal() {
 
 const blank = () => {
   const s = seed();
-  return { version: 1, settings: s.settings, products: [], orders: [], content: s.content };
+  return { version: 1, settings: s.settings, categories: s.categories, products: [], orders: [], content: s.content };
 };
 
 let state = LIVE ? blank() : loadLocal();
@@ -72,6 +77,7 @@ async function fetchState(which) {
   const asks = [
     db.from('products').select('*').order('category').order('sort'),
     db.from('site_content').select('*').eq('id', 1).maybeSingle(),
+    db.from('categories').select('*').order('sort'),
   ];
   if (which === 'admin') {
     asks.push(
@@ -79,12 +85,13 @@ async function fetchState(which) {
       db.from('settings').select('*').eq('id', 1).maybeSingle(),
     );
   }
-  const [p, c, o, st] = await Promise.all(asks);
-  const err = [p, c, o, st].find((r) => r && r.error);
+  const [p, c, cat, o, st] = await Promise.all(asks);
+  const err = [p, c, cat, o, st].find((r) => r && r.error);
   if (err) throw err.error;
   const next = blank();
   next.products = p.data.map(productFromRow);
   if (c.data) next.content = contentFromRow(c.data);
+  if (cat.data && cat.data.length) next.categories = cat.data.map(categoryFromRow);
   if (o) next.orders = o.data.map(orderFromRow);
   if (st && st.data) next.settings = { lowStock: st.data.low_stock };
   return next;
@@ -101,7 +108,7 @@ export async function ready(which = 'public') {
     state = await withTimeout(fetchState(which), 8000);
     if (which === 'public') {
       try {
-        localStorage.setItem(CACHE, JSON.stringify({ products: state.products, content: state.content }));
+        localStorage.setItem(CACHE, JSON.stringify({ products: state.products, content: state.content, categories: state.categories }));
       } catch (e) {
         /* cache is optional */
       }
