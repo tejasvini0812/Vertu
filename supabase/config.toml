@@ -1,0 +1,14 @@
+# Edge Function settings for `supabase functions deploy`.
+# JWT checks are done inside the functions: guests check out with the public key, Razorpay calls the
+# webhook with its own signature, and admin-order verifies the caller and their role itself.
+[functions.checkout]
+verify_jwt = false
+
+[functions.payment-verify]
+verify_jwt = false
+
+[functions.razorpay-webhook]
+verify_jwt = false
+
+[functions.admin-order]
+verify_jwt = false

@@ -2,7 +2,7 @@ import { getState, update, describeError, LIVE, supabase } from '../store.js';
 import { session, signOut } from './auth.js';
 import { esc, $, toast, confirmDialog, enter, listen } from './ui.js';
 
-const ENTITY = { products: 'Product', orders: 'Order', site_content: 'Editorial', settings: 'Settings', admin_users: 'Team' };
+const ENTITY = { products: 'Product', orders: 'Order', site_content: 'Editorial', settings: 'Settings', admin_users: 'Team', coupons: 'Discount', categories: 'Collection' };
 const when = (t) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 function describe(a) {
@@ -50,6 +50,25 @@ export async function renderSettings(root) {
       </div>
     </section>
 
+    <section class="block" aria-labelledby="s-ship">
+      <div class="block__intro"><h2 id="s-ship">Shipping and payment</h2><p>Charged at checkout. Prices already include GST.</p></div>
+      <div class="block__form">
+        <form data-ship-form novalidate style="display:grid;gap:18px">
+          <div class="row2">
+            <div class="field"><label for="sh-fee">Shipping fee (₹)</label><input id="sh-fee" class="input" type="number" min="0" value="${s.settings.shippingFee}" ${owner ? '' : 'disabled'} /><small>0 means shipping is free.</small></div>
+            <div class="field"><label for="sh-free">Free shipping from (₹)</label><input id="sh-free" class="input" type="number" min="0" value="${s.settings.freeShippingOver}" ${owner ? '' : 'disabled'} /><small>Order value after discounts. 0 for no threshold.</small></div>
+          </div>
+          <label class="switch"><input type="checkbox" id="sh-cod" ${s.settings.codEnabled ? 'checked' : ''} ${owner ? '' : 'disabled'}><i></i>Offer cash on delivery</label>
+          <div class="row2">
+            <div class="field"><label for="sh-codfee">Cash on delivery fee (₹)</label><input id="sh-codfee" class="input" type="number" min="0" value="${s.settings.codFee}" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="sh-codmax">Cash on delivery up to (₹)</label><input id="sh-codmax" class="input" type="number" min="0" value="${s.settings.codMax}" ${owner ? '' : 'disabled'} /><small>Larger orders must pay online.</small></div>
+          </div>
+          <div class="field" style="max-width:260px"><label for="sh-hold">Hold unpaid items for (minutes)</label><input id="sh-hold" class="input" type="number" min="5" max="120" value="${s.settings.holdMinutes}" ${owner ? '' : 'disabled'} /><small>While a shopper pays online.</small></div>
+          ${owner ? '<div><button class="btn btn--ink" type="submit">Save shipping and payment</button></div>' : '<p class="muted">Only an owner can change these.</p>'}
+        </form>
+      </div>
+    </section>
+
     ${
       owner && LIVE
         ? `<section class="block" aria-labelledby="s-team">
@@ -81,6 +100,20 @@ export async function renderSettings(root) {
     try {
       update((st) => (st.settings.lowStock = v)).then(() => toast('Low-stock alert saved'), () => {});
       if (!LIVE) toast('Low-stock alert saved');
+    } catch (err) {
+      toast(describeError(err));
+    }
+  });
+
+  $('[data-ship-form]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const n = (id) => Math.round(Number($(id, root).value));
+    const v = { shippingFee: n('#sh-fee'), freeShippingOver: n('#sh-free'), codEnabled: $('#sh-cod', root).checked, codFee: n('#sh-codfee'), codMax: n('#sh-codmax'), holdMinutes: n('#sh-hold') };
+    if ([v.shippingFee, v.freeShippingOver, v.codFee, v.codMax].some((x) => !(x >= 0))) return toast('Use whole rupee amounts of 0 or more.');
+    if (!(v.holdMinutes >= 5 && v.holdMinutes <= 120)) return toast('Hold items for 5 to 120 minutes.');
+    try {
+      update((st) => Object.assign(st.settings, v)).then(() => LIVE && toast('Shipping and payment saved'), () => {});
+      if (!LIVE) toast('Shipping and payment saved');
     } catch (err) {
       toast(describeError(err));
     }

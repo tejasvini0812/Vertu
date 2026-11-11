@@ -31,8 +31,9 @@ writeFileSync(new URL('../supabase/seed.sql', import.meta.url), out);
 let o = `-- OPTIONAL sample orders for a staging project. Do not run on production.\n-- Invented customers (example.com addresses). Delete with: delete from public.orders where customer_email like '%@example.com';\n\n`;
 for (const ord of s.orders) {
   const c = ord.customer;
-  o += `insert into public.orders (id, created_at, status, customer_name, customer_email, customer_phone, ship_address, ship_city, ship_state, ship_pin)\n`;
-  o += `values (${q(ord.id)}, now() - interval '${Math.round((Date.parse('2026-11-12T06:00:00Z') - ord.createdAt) / 60000)} minutes', ${q(ord.status)}, ${[c.name, c.email, c.phone, c.address, c.city, c.state, c.pin].map(q).join(', ')})\non conflict (id) do nothing;\n`;
+  const total = ord.lines.reduce((n, l) => n + l.price * l.qty, 0);
+  o += `insert into public.orders (id, created_at, status, customer_name, customer_email, customer_phone, ship_address, ship_city, ship_state, ship_pin, subtotal, total, payment_method, payment_status)\n`;
+  o += `values (${q(ord.id)}, now() - interval '${Math.round((Date.parse('2026-11-12T06:00:00Z') - ord.createdAt) / 60000)} minutes', ${q(ord.status)}, ${[c.name, c.email, c.phone, c.address, c.city, c.state, c.pin].map(q).join(', ')}, ${total}, ${total}, 'manual', 'paid')\non conflict (id) do nothing;\n`;
   o += `insert into public.order_items (order_id, sku, category, colour, price, qty) values\n`;
   o += ord.lines.map((l) => `  (${q(ord.id)}, ${q(l.sku)}, ${q(l.category)}, ${q(l.colour)}, ${l.price}, ${l.qty})`).join(',\n') + `;\n\n`;
 }

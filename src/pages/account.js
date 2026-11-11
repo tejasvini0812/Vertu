@@ -28,9 +28,19 @@ if (!accountsEnabled) {
   main.innerHTML = '<p class="page-loading">Loading your account…</p>';
   await customerReady;
   let lastId;
-  customer.onChange((u) => {
+  const next = new URLSearchParams(location.search).get('next');
+  customer.onChange(async (u) => {
     if ((u && u.id) === lastId) return;
     lastId = u && u.id;
+    if (u) {
+      // orders placed as a guest with this (now verified) email join the account
+      try {
+        await supabase.rpc('claim_my_orders');
+      } catch (_) {
+        /* not critical */
+      }
+      if (next === 'checkout') return location.replace('../checkout/');
+    }
     u ? dashboard() : signInView();
   });
 }

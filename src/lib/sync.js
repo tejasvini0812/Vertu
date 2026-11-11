@@ -20,6 +20,26 @@ export const productFromRow = (r) => ({
   description: r.description,
 });
 
+export const settingsFromRow = (r) => ({
+  lowStock: r.low_stock,
+  shippingFee: r.shipping_fee ?? 0,
+  freeShippingOver: r.free_shipping_over ?? 0,
+  codEnabled: !!r.cod_enabled,
+  codFee: r.cod_fee ?? 0,
+  codMax: r.cod_max ?? 5000,
+  holdMinutes: r.hold_minutes ?? 15,
+});
+const SETTINGS_COLUMNS = {
+  lowStock: 'low_stock',
+  shippingFee: 'shipping_fee',
+  freeShippingOver: 'free_shipping_over',
+  codEnabled: 'cod_enabled',
+  codFee: 'cod_fee',
+  codMax: 'cod_max',
+  holdMinutes: 'hold_minutes',
+};
+export const COUPON_FIELDS = ['kind', 'value', 'min_subtotal', 'starts_at', 'ends_at', 'max_uses', 'active', 'note'];
+
 export const orderFromRow = (r) => ({
   id: r.id,
   createdAt: Date.parse(r.created_at),
@@ -37,6 +57,19 @@ export const orderFromRow = (r) => ({
     .sort((a, b) => a.id - b.id)
     .map((l) => ({ sku: l.sku, category: l.category, colour: l.colour, price: l.price, qty: l.qty })),
   note: r.note || '',
+  subtotal: r.subtotal ?? null,
+  discount: r.discount ?? 0,
+  shipping: r.shipping ?? 0,
+  codFee: r.cod_fee ?? 0,
+  total: r.total ?? null,
+  coupon: r.coupon_code || null,
+  paymentMethod: r.payment_method || 'manual',
+  paymentStatus: r.payment_status || 'paid',
+  razorpayOrderId: r.razorpay_order_id || null,
+  razorpayPaymentId: r.razorpay_payment_id || null,
+  paidAt: r.paid_at ? Date.parse(r.paid_at) : null,
+  refunded: r.refunded_amount ?? 0,
+  flag: r.flag || null,
 });
 
 export const categoryFromRow = (r) => ({
@@ -101,9 +134,27 @@ export function diff(prev, next) {
     if (Object.keys(values).length) ops.push({ table: 'categories', type: 'update', id: c.id, values });
   }
 
-  if (prev.settings.lowStock !== next.settings.lowStock) {
-    ops.push({ table: 'settings', type: 'update', id: 1, values: { low_stock: next.settings.lowStock } });
+  const sv = {};
+  for (const [k, col] of Object.entries(SETTINGS_COLUMNS)) {
+    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k];
   }
+  if (Object.keys(sv).length) ops.push({ table: 'settings', type: 'update', id: 1, values: sv });
+
+  const oldCoupons = new Map((prev.coupons || []).map((c) => [c.code, c]));
+  const newCoupons = new Map((next.coupons || []).map((c) => [c.code, c]));
+  for (const [code, c] of newCoupons) {
+    const old = oldCoupons.get(code);
+    if (!old) {
+      const values = { code };
+      COUPON_FIELDS.forEach((f) => c[f] !== undefined && (values[f] = c[f]));
+      ops.push({ table: 'coupons', type: 'insert', id: code, key: 'code', values });
+    } else {
+      const values = {};
+      COUPON_FIELDS.forEach((f) => !same(old[f], c[f]) && (values[f] = c[f]));
+      if (Object.keys(values).length) ops.push({ table: 'coupons', type: 'update', id: code, key: 'code', values });
+    }
+  }
+  for (const code of oldCoupons.keys()) if (!newCoupons.has(code)) ops.push({ table: 'coupons', type: 'delete', id: code, key: 'code' });
   return ops;
 }
 
@@ -164,9 +215,10 @@ export async function apply(client, ops) {
     }
     const t = client.from(op.table);
     let res;
-    if (op.type === 'insert') res = await t.insert(op.values).select('id');
-    else if (op.type === 'update') res = await t.update(op.values).eq('id', op.id).select('id');
-    else res = await t.delete().eq('id', op.id).select('id');
+    const key = op.key || 'id';
+    if (op.type === 'insert') res = await t.insert(op.values).select(key);
+    else if (op.type === 'update') res = await t.update(op.values).eq(key, op.id).select(key);
+    else res = await t.delete().eq(key, op.id).select(key);
     if (res.error) throw new SyncError(res.error.message, res.error.code, res.error);
     if (!res.data || res.data.length === 0) throw new SyncError('not-allowed', '42501');
   }

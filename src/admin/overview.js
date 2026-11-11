@@ -1,4 +1,4 @@
-import { getState, orderTotal, money, CATEGORIES } from '../store.js';
+import { getState, orderTotal, orderRevenue, countsAsSale, money, CATEGORIES } from '../store.js';
 import { esc, $, $$, icons, countUp, enter, listen } from './ui.js';
 
 const DAY = 86400000;
@@ -14,35 +14,37 @@ export const statusChip = (s) => `<span class="status st-${s.toLowerCase()}">${s
 export function metrics() {
   const s = getState();
   const threshold = s.settings.lowStock;
-  const revenue = s.orders.reduce((n, o) => n + orderTotal(o), 0);
-  const active = s.orders.filter((o) => o.status !== 'Delivered');
+  const sales = s.orders.filter(countsAsSale);
+  const revenue = s.orders.reduce((n, o) => n + orderRevenue(o), 0);
+  const active = sales.filter((o) => o.status !== 'Delivered');
   const low = s.products
     .filter((p) => p.status === 'active' && p.stock <= threshold)
     .sort((a, b) => a.stock - b.stock);
-  return { s, threshold, revenue, active, low };
+  const attention = s.orders.filter((o) => o.flag && o.status !== 'Cancelled');
+  return { s, threshold, revenue, active, low, sales, attention };
 }
 
 export function renderOverview(root) {
   const on = listen(root);
-  const { s, threshold, revenue, active, low } = metrics();
+  const { s, threshold, revenue, active, low, sales, attention } = metrics();
   const today = dayKey(Date.now());
   const days = Array.from({ length: 14 }, (_, i) => today - (13 - i) * DAY);
   const byDay = days.map((d) =>
-    s.orders.filter((o) => dayKey(o.createdAt) === d).reduce((n, o) => n + orderTotal(o), 0),
+    s.orders.filter((o) => dayKey(o.createdAt) === d).reduce((n, o) => n + orderRevenue(o), 0),
   );
   const max = Math.max(...byDay, 1);
   const top = byDay.indexOf(Math.max(...byDay));
   const fortnight = byDay.reduce((a, b) => a + b, 0);
   const catRev = CATEGORIES.map((c) => ({
     c,
-    v: s.orders.reduce(
+    v: sales.reduce(
       (n, o) => n + o.lines.filter((l) => l.category === c.id).reduce((m, l) => m + l.price * l.qty, 0),
       0,
     ),
   }));
   const catMax = Math.max(...catRev.map((x) => x.v), 1);
   const pending = active.filter((o) => o.status === 'Pending').length;
-  const recent = s.orders.slice(0, 6);
+  const recent = sales.slice(0, 6);
   const nameOf = (id) => CATEGORIES.find((c) => c.id === id)?.name;
   const out = low.filter((p) => p.stock === 0).length;
 
@@ -52,10 +54,11 @@ export function renderOverview(root) {
       <p>A quiet look at how the three collections are doing across the last thirty days.</p></div>
     </header>
 
+    ${attention.length ? `<p class="alert-bar" role="alert"><b>${attention.length} ${attention.length === 1 ? 'order needs' : 'orders need'} a look:</b> ${attention.map((o) => `<a class="text-btn" href="#/orders?open=${o.id}">${o.id}</a>`).join(', ')}</p>` : ''}
     <section class="kpis" aria-label="Key figures">
       <div class="kpi"><p class="kpi__label">Total revenue</p>
         <p class="kpi__value num" data-count="${revenue}" data-money>${money(revenue)}</p>
-        <p class="kpi__note">${s.orders.length} orders in total, ${money(fortnight)} in the last 14 days</p></div>
+        <p class="kpi__note">${sales.length} orders, after refunds; ${money(fortnight)} in the last 14 days</p></div>
       <div class="kpi"><p class="kpi__label">Active orders</p>
         <p class="kpi__value num" data-count="${active.length}">${active.length}</p>
         <p class="kpi__note"><b>${pending}</b> waiting to be picked up, ${active.length - pending} on the way</p></div>

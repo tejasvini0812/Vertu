@@ -138,7 +138,7 @@ export function initCartUI({ onOpen, onClose, base = '' } = {}) {
   });
 
   root.querySelector('[data-checkout]').addEventListener('click', () => {
-    toast('Checkout opens soon. Payments are being connected.');
+    location.href = `${base}checkout/`;
   });
 
   list.addEventListener('click', (e) => {

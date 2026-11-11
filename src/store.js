@@ -1,6 +1,6 @@
 import { seed } from './seed.js';
 import { LIVE, supabase } from './lib/supabase.js';
-import { diff, apply, productFromRow, orderFromRow, contentFromRow, categoryFromRow } from './lib/sync.js';
+import { diff, apply, productFromRow, orderFromRow, contentFromRow, categoryFromRow, settingsFromRow } from './lib/sync.js';
 import slingImg from './assets/img/sling.jpg';
 import mensImg from './assets/img/mens.jpg';
 import laptopImg from './assets/img/laptop.jpg';
@@ -11,6 +11,7 @@ import hero3 from './assets/img/hero-3.jpg';
 export { CATEGORIES, STATUSES, skuFor } from './seed.js';
 import { CATEGORIES as BASE_CATEGORIES, CATEGORY_DETAILS } from './seed.js';
 export { LIVE, supabase };
+export { callFunction } from './lib/supabase.js';
 
 /**
  * One store shared by the storefront and the /admin portal.
@@ -49,6 +50,9 @@ function loadLocal() {
       const s = JSON.parse(raw);
       if (s && s.version === 1) {
         // demo data saved before Phase 2 has no collection details
+        // demo data saved before Phase 3 has no shipping rules or coupons
+        s.settings = { ...seed().settings, ...s.settings };
+        if (!s.coupons) s.coupons = [];
         if (!s.categories) s.categories = BASE_CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) }));
         return s;
       }
@@ -63,7 +67,7 @@ function loadLocal() {
 
 const blank = () => {
   const s = seed();
-  return { version: 1, settings: s.settings, categories: s.categories, products: [], orders: [], content: s.content };
+  return { version: 1, settings: s.settings, categories: s.categories, products: [], orders: [], coupons: [], content: s.content };
 };
 
 let state = LIVE ? blank() : loadLocal();
@@ -83,17 +87,19 @@ async function fetchState(which) {
     asks.push(
       db.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(1000),
       db.from('settings').select('*').eq('id', 1).maybeSingle(),
+      db.from('coupons').select('*').order('created_at', { ascending: false }),
     );
   }
-  const [p, c, cat, o, st] = await Promise.all(asks);
-  const err = [p, c, cat, o, st].find((r) => r && r.error);
+  const [p, c, cat, o, st, cp] = await Promise.all(asks);
+  const err = [p, c, cat, o, st, cp].find((r) => r && r.error);
   if (err) throw err.error;
   const next = blank();
   next.products = p.data.map(productFromRow);
   if (c.data) next.content = contentFromRow(c.data);
   if (cat.data && cat.data.length) next.categories = cat.data.map(categoryFromRow);
   if (o) next.orders = o.data.map(orderFromRow);
-  if (st && st.data) next.settings = { lowStock: st.data.low_stock };
+  if (st && st.data) next.settings = settingsFromRow(st.data);
+  if (cp) next.coupons = cp.data;
   return next;
 }
 
@@ -217,14 +223,24 @@ export function describeError(e) {
   const msg = String((e && e.message) || '');
   if (msg === 'storage-full') return 'Browser storage is full. Remove some uploaded images and try again.';
   if (msg === 'not-allowed' || code === '42501') return 'Your account is not allowed to make that change.';
+  if (code === '23505' && /coupons/.test(msg)) return 'A code with that name already exists.';
   if (code === '23505') return 'That SKU already exists. Use a different colour name.';
   if (code === '23514' || code === '22P02') return 'One of the values is not allowed. Check prices, stock and the swatch colour.';
+  if (msg === 'use_cancel') return 'To cancel, use “Cancel order” in the order details. It restocks and refunds.';
+  if (msg === 'order_unpaid') return 'This order hasn’t been paid yet, so it can’t move along.';
+  if (msg === 'order_cancelled') return 'This order was cancelled.';
   if (code === 'upload') return `The image could not be uploaded: ${msg}`;
   if (msg === 'timeout' || /fetch|network/i.test(msg)) return 'Could not reach the server. Check your connection and try again.';
   if (code === 'PGRST301' || /JWT/i.test(msg)) return 'Your session has expired. Sign in again.';
   return `Could not save: ${msg}`;
 }
 
-export const orderTotal = (o) => o.lines.reduce((n, l) => n + l.price * l.qty, 0);
+/** What the customer was charged (checkout orders), or the sum of the lines (older orders). */
+export const orderTotal = (o) => (o.total != null ? o.total : o.lines.reduce((n, l) => n + l.price * l.qty, 0));
+/** Orders whose money is real: excludes unpaid, expired and cancelled-before-payment orders. */
+export const countsAsSale = (o) =>
+  !['awaiting', 'failed', 'expired', 'cancelled'].includes(o.paymentStatus || 'paid') && o.status !== 'Cancelled';
+/** Net revenue of an order after refunds. */
+export const orderRevenue = (o) => (countsAsSale(o) ? orderTotal(o) - (o.refunded || 0) : 0);
 export const money = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);

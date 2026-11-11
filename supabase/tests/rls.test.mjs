@@ -18,7 +18,8 @@ const OWNER = '00000000-0000-0000-0000-00000000000a', STAFF = '00000000-0000-000
 let pass = 0, fail = 0;
 async function as(who, aal, sql, params = []) {
   const role = who ? 'authenticated' : 'anon';
-  const claims = JSON.stringify(who ? { sub: who, role, aal } : { role });
+  const EMAILS = { [OWNER]: 'owner@vertu.test', [STAFF]: 'staff@vertu.test', [SHOP]: 'shopper@vertu.test', '00000000-0000-0000-0000-00000000000d': 'other@vertu.test' };
+  const claims = JSON.stringify(who ? { sub: who, role, aal, email: EMAILS[who] } : { role });
   return db.transaction(async (tx) => {
     await tx.query(`select set_config('request.jwt.claims', $1, true)`, [claims]);
     await tx.query(`set local role ${role}`);
@@ -146,5 +147,113 @@ await expect('deleting an account removes its data', async () => {
   await db.exec(`delete from auth.users where id='${SHOP}'`);
   return db.query(`select (select count(*) from addresses where user_id='${SHOP}')::int + (select count(*) from carts where user_id='${SHOP}')::int + (select count(*) from wishlist_items where user_id='${SHOP}')::int + (select count(*) from profiles where id='${SHOP}')::int n`);
 }, (r) => r.rows[0].n === 0);
+
+// ---------------------------------------------------------------- Phase 3: checkout and payments
+const svc = (sql, params = []) => db.transaction(async (tx) => {
+  await tx.query(`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`);
+  await tx.query('set local role service_role');
+  return tx.query(sql, params);
+});
+const J = (x) => JSON.stringify(x);
+const quote = (items, coupon = null, method = 'razorpay') => as(null, null, `select quote_checkout($1::jsonb, $2, $3) q`, [J(items), coupon, method]).then((r) => r.rows[0].q);
+const stock = async (sku) => (await db.query(`select stock from products where id=$1`, [sku])).rows[0].stock;
+const contact = { email: 'Guest@Example.com', phone: '+919876543210' };
+const address = { full_name: 'Guest Buyer', line1: '5 Lake Street', line2: 'Near park', city: 'Pune', state: 'Maharashtra', pin: '411004' };
+const create = (items, coupon = null, method = 'razorpay', c = contact, a = address, user = null) =>
+  svc(`select create_order($1::jsonb, $2, $3, $4::jsonb, $5::jsonb, $6) r`, [J(items), coupon, method, J(c), J(a), user]).then((r) => r.rows[0].r);
+
+await expect('shoppers can read shipping rules', () => as(null, null, `select store_rules() r`), (r) => r.rows[0].r.cod_enabled === false);
+await expect('quote uses database prices', async () => ({ rows: [await quote([{ sku: 'VRT-LP-CRI', qty: 2, price: 1 }])] }), (r) => r.rows[0].subtotal === 4998 && r.rows[0].total === 4998 && r.rows[0].problems.length === 0);
+await expect('quote flags short stock, drafts, bad qty, duplicates', async () => ({ rows: [await quote([{ sku: 'VRT-SL-MUS', qty: 1 }, { sku: 'VRT-LP-FOR', qty: 1 }, { sku: 'VRT-LP-COB', qty: 0 }, { sku: 'VRT-MS-NAV', qty: 1 }, { sku: 'VRT-MS-NAV', qty: 1 }])] }),
+  (r) => ['insufficient', 'unavailable', 'bad_qty', 'duplicate'].every((k) => r.rows[0].problems.some((p) => p.kind === k)));
+await expect('empty bag is a problem', async () => ({ rows: [await quote([])] }), (r) => r.rows[0].problems[0].kind === 'empty');
+await db.exec(`update settings set shipping_fee = 99, free_shipping_over = 3000`);
+await expect('shipping charged under the threshold', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 1 }])] }), (r) => r.rows[0].shipping === 99 && r.rows[0].total === 1898);
+await expect('free shipping over the threshold', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 2 }])] }), (r) => r.rows[0].shipping === 0);
+await expect('staff create a coupon', () => as(STAFF, 'aal2', `insert into coupons (code, kind, value, min_subtotal) values ('WELCOME10','percent',10,2000) returning code`), rows(1));
+await expect('coupon codes are validated', () => as(STAFF, 'aal2', `insert into coupons (code, kind, value) values ('bad code','percent',10)`), errored('check'));
+await expect('percent coupons capped at 90', () => as(STAFF, 'aal2', `insert into coupons (code, kind, value) values ('HALFOFF','percent',95)`), errored('check'));
+await expect('shoppers cannot list coupons', () => as(OTHER, 'aal1', `select * from coupons`), rows(0));
+await expect('coupon below minimum is refused', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 1 }], 'welcome10')] }), (r) => r.rows[0].coupon.valid === false && r.rows[0].coupon.reason === 'min_subtotal' && r.rows[0].discount === 0);
+await expect('coupon applies (case-insensitive) and can remove free shipping', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 2 }], ' welcome10 ')] }),
+  (r) => r.rows[0].coupon.valid && r.rows[0].discount === 359 && r.rows[0].shipping === 0 && r.rows[0].total === 3598 - 359);
+await db.exec(`insert into coupons (code, kind, value, ends_at, starts_at) values ('OLD','amount',100, now() - interval '1 day', now() - interval '2 days'), ('ONCE','amount',200, null, null)`);
+await db.exec(`update coupons set max_uses = 1 where code = 'ONCE'`);
+await expect('expired coupon refused', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 1 }], 'OLD')] }), (r) => r.rows[0].coupon.reason === 'expired');
+await expect('cash on delivery off by default', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 1 }], null, 'cod')] }), (r) => r.rows[0].problems.some((p) => p.kind === 'cod_off'));
+await db.exec(`update settings set cod_enabled = true, cod_fee = 49, cod_max = 4000`);
+await expect('cash on delivery adds its fee', async () => ({ rows: [await quote([{ sku: 'VRT-SL-COB', qty: 1 }], null, 'cod')] }), (r) => r.rows[0].cod_fee === 49 && r.rows[0].total === 1799 + 99 + 49 && !r.rows[0].problems.length);
+await expect('cash on delivery has a limit', async () => ({ rows: [await quote([{ sku: 'VRT-LP-CRI', qty: 2 }], null, 'cod')] }), (r) => r.rows[0].problems.some((p) => p.kind === 'cod_limit'));
+
+await expect('browsers cannot create orders', () => as(OTHER, 'aal1', `select create_order('[{"sku":"VRT-LP-CRI","qty":1}]', null, 'razorpay', '{}', '{}', null)`), errored('permission'));
+await expect('browsers cannot mark orders paid', () => as(null, null, `select mark_order_paid('x','y',1)`), errored('permission'));
+await expect('browsers cannot call the raw pricer', () => as(null, null, `select price_cart('[]')`), errored('permission'));
+await expect('bad phone refused', async () => ({ rows: [await create([{ sku: 'VRT-LP-CRI', qty: 1 }], null, 'razorpay', { email: 'a@b.co', phone: '98765' })] }), (r) => r.rows[0].error === 'bad_phone');
+await expect('bad PIN refused', async () => ({ rows: [await create([{ sku: 'VRT-LP-CRI', qty: 1 }], null, 'razorpay', contact, { ...address, pin: '000000' })] }), (r) => r.rows[0].error === 'bad_address');
+
+const before = await stock('VRT-LP-CRI');
+let ord;
+await expect('server creates an order and holds the stock', async () => { ord = await create([{ sku: 'VRT-LP-CRI', qty: 2 }, { sku: 'VRT-SL-COB', qty: 1 }], 'WELCOME10'); return { rows: [ord] }; },
+  (r) => r.rows[0].ok && r.rows[0].total === 4998 + 1799 - 679 && r.rows[0].expires_at);
+await expect('stock went down and was logged as an order', async () => ({ rows: [{ s: await stock('VRT-LP-CRI'), log: (await db.query(`select reason, delta from inventory_log where sku='VRT-LP-CRI' order by id desc limit 1`)).rows[0] }] }),
+  (r) => r.rows[0].s === before - 2 && r.rows[0].log.reason === 'order' && r.rows[0].log.delta === -2);
+await expect('order stored awaiting payment, email lower-cased', () => db.query(`select payment_status, status, customer_email, ship_address, coupon_code, discount from orders where id=$1`, [ord.order_id]),
+  (r) => r.rows[0].payment_status === 'awaiting' && r.rows[0].status === 'Pending' && r.rows[0].customer_email === 'guest@example.com' && r.rows[0].ship_address === '5 Lake Street, Near park' && r.rows[0].coupon_code === 'WELCOME10' && r.rows[0].discount === 679);
+await expect('coupon use counted', () => db.query(`select used_count from coupons where code='WELCOME10'`), (r) => r.rows[0].used_count === 1);
+await expect('staff cannot move an unpaid order along', () => as(STAFF, 'aal2', `update orders set status='Shipped' where id='${ord.order_id}'`), errored('order_unpaid'));
+await expect('more than in stock is refused and nothing changes', async () => { const b = await stock('VRT-MS-MUS'); const r = await create([{ sku: 'VRT-MS-MUS', qty: 9 }]); return { rows: [{ r, same: (await stock('VRT-MS-MUS')) === b }] }; },
+  (r) => r.rows[0].r.error === 'cart' && r.rows[0].same);
+await expect('order lookup needs the secret token', () => as(null, null, `select order_lookup($1, $2) a, order_lookup($1, gen_random_uuid()) b`, [ord.order_id, ord.access_token]),
+  (r) => r.rows[0].a.total === ord.total && r.rows[0].a.lines.length === 2 && r.rows[0].b === null);
+
+await svc(`select attach_razorpay_order($1, 'order_RZP1')`, [ord.order_id]);
+await expect('wrong amount is not accepted as payment', () => svc(`select mark_order_paid('order_RZP1', 'pay_X', 100) r`), (r) => r.rows[0].r.error === 'amount_mismatch');
+await expect('mismatch is flagged for a person', () => db.query(`select flag, payment_status from orders where id=$1`, [ord.order_id]), (r) => /amount_mismatch/.test(r.rows[0].flag) && r.rows[0].payment_status === 'awaiting');
+await expect('correct payment marks it paid', () => svc(`select mark_order_paid('order_RZP1', 'pay_OK', $1) r`, [ord.total * 100]), (r) => r.rows[0].r.ok && !r.rows[0].r.already);
+await expect('second confirmation is harmless', () => svc(`select mark_order_paid('order_RZP1', 'pay_OK', $1) r`, [ord.total * 100]), (r) => r.rows[0].r.already === true);
+await expect('staff can now ship it', () => as(STAFF, 'aal2', `update orders set status='Shipped' where id='${ord.order_id}' returning id`), rows(1));
+await expect('staff cannot cancel from the status buttons', () => as(STAFF, 'aal2', `update orders set status='Cancelled' where id='${ord.order_id}'`), errored('use_cancel'));
+await expect('partial refund recorded', () => svc(`select settle_cancel_refund($1, 50000, 'rfnd_1', false, false, null, 'damaged strap') r`, [ord.order_id]), (r) => r.rows[0].r.refunded_amount === 500);
+await expect('refund larger than paid is refused', () => svc(`select settle_cancel_refund($1, $2, 'rfnd_2', false, false, null, '') r`, [ord.order_id, ord.total * 100]), (r) => r.rows[0].r.error === 'refund_too_large');
+const cobBefore = await stock('VRT-SL-COB');
+await expect('cancel with full refund restocks', () => svc(`select settle_cancel_refund($1, $2, 'rfnd_3', true, true, null, 'customer cancelled') r`, [ord.order_id, (ord.total - 500) * 100]), (r) => r.rows[0].r.ok);
+await expect('order now refunded and cancelled, stock back', async () => ({ rows: [{ o: (await db.query(`select status, payment_status, refunded_amount, total from orders where id=$1`, [ord.order_id])).rows[0], s: await stock('VRT-SL-COB') }] }),
+  (r) => r.rows[0].o.status === 'Cancelled' && r.rows[0].o.payment_status === 'refunded' && r.rows[0].o.refunded_amount === r.rows[0].o.total && r.rows[0].s === cobBefore + 1);
+
+// holds expire
+let o2;
+await expect('second order holds stock', async () => { o2 = await create([{ sku: 'VRT-LP-BLA', qty: 1 }], 'ONCE'); return { rows: [o2] }; }, (r) => r.rows[0].ok);
+await expect('a one-use coupon is now used up', async () => ({ rows: [await quote([{ sku: 'VRT-LP-BLA', qty: 1 }], 'ONCE')] }), (r) => r.rows[0].coupon.reason === 'used_up');
+const blaHeld = await stock('VRT-LP-BLA');
+await svc(`select attach_razorpay_order($1, 'order_RZP2')`, [o2.order_id]);
+await db.exec(`update orders set expires_at = now() - interval '1 minute' where id='${o2.order_id}'`);
+await expect('expired holds are released', () => svc(`select release_expired_orders() n`), (r) => r.rows[0].n === 1);
+await expect('released: stock back, coupon freed, order expired', async () => ({ rows: [{ s: await stock('VRT-LP-BLA'), o: (await db.query(`select status, payment_status from orders where id=$1`, [o2.order_id])).rows[0], q: await quote([{ sku: 'VRT-LP-BLA', qty: 1 }], 'ONCE') }] }),
+  (r) => r.rows[0].s === blaHeld + 1 && r.rows[0].o.payment_status === 'expired' && r.rows[0].o.status === 'Cancelled' && r.rows[0].q.coupon.valid);
+await expect('payment after expiry still lands (stock available)', () => svc(`select mark_order_paid('order_RZP2','pay_late',$1) r`, [o2.total * 100]), (r) => r.rows[0].r.ok && !r.rows[0].r.flag);
+await expect('late order is live again and stock retaken', async () => ({ rows: [{ s: await stock('VRT-LP-BLA'), o: (await db.query(`select status, payment_status, flag from orders where id=$1`, [o2.order_id])).rows[0] }] }),
+  (r) => r.rows[0].s === blaHeld && r.rows[0].o.status === 'Pending' && r.rows[0].o.payment_status === 'paid' && r.rows[0].o.flag === null);
+let o3;
+o3 = await create([{ sku: 'VRT-LP-MUS', qty: 4 }]);
+await svc(`select attach_razorpay_order($1, 'order_RZP3')`, [o3.order_id]);
+await db.exec(`update orders set expires_at = now() - interval '1 minute' where id='${o3.order_id}'`);
+await svc(`select release_expired_orders()`);
+await db.exec(`update products set stock = 1 where id='VRT-LP-MUS'`);
+await expect('late payment without stock is flagged for a refund', () => svc(`select mark_order_paid('order_RZP3','pay_late2',$1) r`, [o3.total * 100]), (r) => r.rows[0].r.flag === 'VRT-LP-MUS');
+await expect('stock was not taken below zero', async () => ({ rows: [{ s: await stock('VRT-LP-MUS') }] }), (r) => r.rows[0].s === 1);
+
+// cash on delivery
+let cod;
+await expect('cash on delivery order', async () => { cod = await create([{ sku: 'VRT-SL-BLA', qty: 1 }], null, 'cod', { email: 'other@vertu.test', phone: '+919123456789' }); return { rows: [cod] }; }, (r) => r.rows[0].ok && r.rows[0].total === 1799 + 99 + 49 && !r.rows[0].expires_at);
+await expect('delivered cash order counts as paid', async () => {
+  for (const s of ['Processing', 'Shipped', 'Delivered']) await as(STAFF, 'aal2', `update orders set status='${s}' where id='${cod.order_id}'`);
+  return db.query(`select payment_status, paid_at from orders where id=$1`, [cod.order_id]);
+}, (r) => r.rows[0].payment_status === 'paid' && r.rows[0].paid_at);
+await expect('guest orders join the account with the same email', async () => {
+  const claimed = await as(OTHER, 'aal1', `select claim_my_orders() n`);
+  const mine = await as(OTHER, 'aal1', `select id from orders`);
+  return { rows: [{ n: claimed.rows[0].n, ids: mine.rows.map((x) => x.id) }] };
+}, (r) => r.rows[0].n === 1 && r.rows[0].ids.length === 1 && r.rows[0].ids[0] === cod.order_id);
+await expect('anon cannot claim orders', () => as(null, null, `select claim_my_orders()`), errored('permission'));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

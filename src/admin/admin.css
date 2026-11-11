@@ -1549,3 +1549,93 @@ body.gated .shell {
 .activity time {
   color: var(--ink-2);
 }
+
+/* ---------- payments ---------- */
+.pay {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.pay::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stone);
+}
+.pay-ok::before {
+  background: var(--accent);
+}
+.pay-due::before {
+  background: transparent;
+  border: 1px solid var(--accent);
+}
+.pay-wait::before {
+  background: transparent;
+  border: 1px dashed var(--ink-2);
+}
+.pay-off {
+  color: var(--ink-2);
+}
+.status.st-cancelled {
+  color: var(--ink-2);
+  text-decoration: line-through;
+  text-decoration-color: var(--stone);
+}
+.alert-bar {
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  background: var(--paper-2);
+  border-left: 2px solid var(--ink);
+  font-size: 0.9375rem;
+}
+.alert-bar b {
+  font-weight: 600;
+}
+.money {
+  margin: 14px 0 0;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9375rem;
+}
+.money div {
+  display: flex;
+  justify-content: space-between;
+}
+.money dt {
+  color: var(--ink-2);
+}
+.money dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.money__total {
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--stone);
+  font-weight: 600;
+}
+.money__total dt {
+  color: var(--ink) !important;
+}
+.danger-zone {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--stone);
+}
+.refund {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--stone);
+}
+.refund .btn,
+.danger-zone > .btn {
+  justify-self: start;
+}
+code {
+  font-size: 0.8125rem;
+}

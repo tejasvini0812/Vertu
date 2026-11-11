@@ -7,12 +7,14 @@ import { renderProducts } from './products.js';
 import { renderOrders } from './orders.js';
 import { renderContent } from './content.js';
 import { renderSettings } from './settings.js';
+import { renderDiscounts } from './discounts.js';
 
 const ROUTES = {
   overview: { label: 'Overview', fn: renderOverview },
   products: { label: 'Products', fn: renderProducts },
   orders: { label: 'Orders', fn: renderOrders },
   content: { label: 'Editorial', fn: renderContent },
+  discounts: { label: 'Discounts', fn: renderDiscounts },
   settings: { label: 'Settings', fn: renderSettings },
 };
 const view = $('#view');

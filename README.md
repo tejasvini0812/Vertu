@@ -44,6 +44,7 @@ The site runs in one of two modes:
 2. **Create the database.** In the SQL editor, run in order:
    - `supabase/migrations/20261112000000_phase1_core.sql`: catalogue, orders, staff, access rules, storage bucket
    - `supabase/migrations/20261112010000_phase2_customers.sql`: customer profiles, addresses, wishlist, saved bag, back-in-stock alerts, collection details
+   - `supabase/migrations/20261112020000_phase3_checkout.sql`: pricing, stock holds, orders and payments, coupons, refunds
    - `supabase/seed.sql`: the 15 starting products, collection details and editorial content (safe to re-run)
    - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
 
@@ -74,6 +75,42 @@ The site runs in one of two modes:
 - **Back-in-stock alerts** are collected now. The admin shows "N waiting" next to sold-out colours. The emails themselves are sent in Phase 4.
 - **Delivery estimates** are rough PIN-code zones in `src/delivery.js` until the courier integration (Phase 5) gives real ones. Edit the zones once you know where orders ship from.
 
+## Checkout and payments (Phase 3)
+
+How an order is placed:
+
+1. `/checkout/` asks the database for a **quote** (`quote_checkout`). The database reprices the bag from live products, applies the discount code, shipping and the cash-on-delivery fee. Anything sold out or reduced is fixed in the bag and explained to the shopper.
+2. **Place order** calls the `checkout` Edge Function. It runs `create_order` in the database, which locks the products and takes the stock in one step, so two shoppers can't buy the last bag. Browsers can't call this function.
+   - **Cash on delivery:** the order is confirmed straight away.
+   - **Online:** a Razorpay order is created for the exact total and the Razorpay window opens. Stock is held for 15 minutes (adjustable).
+3. When Razorpay reports success, `payment-verify` checks Razorpay's signature, fetches the payment from Razorpay, captures it if needed, checks the amount, and marks the order paid.
+4. The `razorpay-webhook` function does the same if the shopper closes the tab before step 3. Repeat confirmations are harmless.
+5. Unpaid holds are released automatically (every 5 minutes with pg_cron, and on every checkout). If a payment arrives after its hold expired, the stock is taken again. If it has sold out meanwhile, the order is flagged for a refund on the admin overview.
+6. `/order/?id=…&t=…` is the confirmation page. The `t` value is a secret given only to the buyer.
+
+**Admin:**
+- Orders show payment status (Paid, Cash due, Awaiting payment, Refunded…). Unpaid checkouts sit under their own tab.
+- Owners can **cancel** an order (restocks, and refunds anything paid online) or **refund** part or all of a payment, with an optional restock. Both go through the `admin-order` function, which checks the caller is an owner with two-step verification.
+- **Discounts:** create percentage or rupee codes with a minimum order, dates and a use limit.
+- **Settings:** shipping fee, free-shipping threshold, cash on delivery (on/off, fee, limit) and how long items are held.
+
+### Setting up Razorpay
+
+1. Create a Razorpay account. **Start KYC early**: live payments need it, and it can take 1–3 weeks. Test mode works immediately.
+2. Razorpay Dashboard → *Account & Settings* → *API Keys*: generate **test** keys.
+3. Give the keys to the Edge Functions (never to the website):
+   ```
+   supabase secrets set RAZORPAY_KEY_ID=rzp_test_xxx RAZORPAY_KEY_SECRET=xxx \
+     RAZORPAY_WEBHOOK_SECRET=choose-a-long-random-string ALLOWED_ORIGINS=https://yourdomain.com
+   supabase functions deploy checkout payment-verify razorpay-webhook admin-order
+   ```
+4. Razorpay Dashboard → *Webhooks* → add `https://YOUR-PROJECT-REF.supabase.co/functions/v1/razorpay-webhook`. Use the same webhook secret, and select the events `payment.captured`, `payment.failed` and `order.paid`.
+5. Supabase → *Database* → *Extensions*: enable **pg_cron**, then re-run the last block of the Phase 3 migration (it schedules the hold release).
+6. Test with Razorpay's test cards or the UPI ID `success@razorpay`, then check the order in the admin.
+7. To go live: after KYC, swap in **live** keys and a live webhook. Nothing else changes.
+
+Without Razorpay keys, online payment shows as unavailable. Cash on delivery still works if you switch it on.
+
 ### What each role can do
 
 | | Shopper / public | Staff | Owner |
@@ -84,7 +121,8 @@ The site runs in one of two modes:
 | See draft products, orders, customer details | | ✓ | ✓ |
 | Edit products, price, stock, images; add products; collection details | | ✓ | ✓ |
 | See back-in-stock requests and saved addresses | | ✓ | ✓ |
-| Change order status; publish editorial | | ✓ | ✓ |
+| Change order status; publish editorial; manage discount codes | | ✓ | ✓ |
+| Cancel and refund orders; shipping and payment settings | | | ✓ |
 | Remove products; change the low-stock threshold | | | ✓ |
 | Manage the team; see the activity log and data requests | | | ✓ |
 
@@ -101,10 +139,11 @@ These rules are enforced by the database (row level security in the migration), 
 
 - `npm test` runs both suites.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
-- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 78 access rules (guest, shopper, staff with and without two-step verification, owner).
+- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 128 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds.
+- `tests/payments.test.mjs`: the Edge Function logic against that same database with a fake Razorpay. Covers signatures, forged and replayed payments, webhooks, retries, Razorpay outages, refunds and cancellations.
+- `tests/pricing-parity.test.mjs`: the browser's pricing matches the database's.
 
 ### Still to do (later phases)
 
-- **Phase 3:** checkout and Razorpay. Orders will be created by a server function that re-checks prices and stock. Browsers can never create orders.
-- **Phase 4:** order and shipping emails.
+- **Phase 4:** order, shipping and back-in-stock emails (checkout already says "updates go to your email").
 - **Phase 5 onwards:** shipping (Shiprocket), invoices, legal pages, security hardening, SEO and monitoring.
