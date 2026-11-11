@@ -2,7 +2,7 @@ import pocketImg from './assets/img/detail-pocket.jpg';
 import organiserImg from './assets/img/detail-organiser.jpg';
 import hardwareImg from './assets/img/detail-hardware.jpg';
 import laptopImg from './assets/img/laptop.jpg';
-import { getState, resolveImage, CATEGORIES } from './store.js';
+import { getState, ready, resolveImage, CATEGORIES } from './store.js';
 import { seed } from './seed.js';
 
 /**
@@ -10,6 +10,8 @@ import { seed } from './seed.js';
  * Each colour is one SKU with its own price, stock and image.
  * If a category has no active SKUs the seed data is used so the page never breaks.
  */
+// Live mode: fetch the catalogue and editorial content before the page builds.
+await ready('public');
 const state = getState();
 const fallback = seed().products;
 

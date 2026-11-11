@@ -1418,3 +1418,134 @@ dialog h2 {
 #view, .toolbar > *, .split > *, .stack > *, .block > * { min-width: 0; }
 .main { overflow-x: clip; }
 @media (max-width: 720px) { .kpis { grid-template-columns: minmax(0,1fr); } .page-head > * { min-width: 0; } }
+
+/* ---------- sign-in gate ---------- */
+body.gated .shell {
+  display: none;
+}
+.gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 48px 20px;
+}
+.gate__card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 18px;
+}
+.gate__logo {
+  width: 120px;
+  margin-bottom: 28px;
+}
+.gate h1 {
+  font-size: clamp(2.25rem, 5vw, 3rem);
+  font-style: italic;
+}
+.gate__sub {
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.gate form {
+  display: grid;
+  gap: 18px;
+}
+.gate form .btn {
+  width: 100%;
+}
+.gate form .link-btn {
+  justify-self: start;
+}
+.gate .err {
+  min-height: 1.2em;
+  margin: -6px 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.gate .err:empty {
+  display: none;
+}
+.gate__loading {
+  color: var(--ink-2);
+}
+.gate__qr {
+  justify-self: start;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--stone);
+}
+.gate__qr img {
+  display: block;
+}
+.gate__secret {
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+.gate__secret code {
+  font-size: 0.8125rem;
+  color: var(--ink);
+  word-break: break-all;
+  letter-spacing: 0.04em;
+}
+.side__who {
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.side__who strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+}
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+.mode-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.mode-badge.is-demo::before {
+  background: transparent;
+  border: 1px solid var(--ink-2);
+}
+.history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--stone);
+  font-size: 0.875rem;
+}
+.history .num.up {
+  color: var(--accent);
+}
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+  gap: 12px;
+  align-items: end;
+}
+@media (max-width: 720px) {
+  .inline-form {
+    grid-template-columns: 1fr;
+  }
+}
+.activity li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--stone);
+  font-size: 0.875rem;
+}
+.activity time {
+  color: var(--ink-2);
+}

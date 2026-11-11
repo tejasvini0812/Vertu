@@ -1,11 +1,12 @@
-import { getState, update, resolveImage } from '../store.js';
-import { esc, $, $$, toast, mountDrop, dropHTML, enter } from './ui.js';
+import { getState, update, resolveImage, describeError, LIVE } from '../store.js';
+import { esc, $, $$, toast, mountDrop, dropHTML, enter, listen } from './ui.js';
 
 let draft = null;
 let base = null;
 const dirty = () => JSON.stringify(draft) !== JSON.stringify(base);
 
 export function renderContent(root, fresh = true) {
+  const on = listen(root);
   const pub = getState().content;
   if (fresh || !draft) {
     base = structuredClone(pub);
@@ -82,7 +83,7 @@ export function renderContent(root, fresh = true) {
   bar();
   count();
 
-  root.addEventListener('input', (e) => {
+  on('input', (e) => {
     const t = e.target;
     if (t.dataset.a) {
       draft.announcement[t.dataset.a] = t.type === 'checkbox' ? t.checked : t.value;
@@ -124,19 +125,25 @@ export function renderContent(root, fresh = true) {
     renderContent(root, true);
     toast('Changes discarded');
   });
-  $('[data-publish]', root).addEventListener('click', () => {
+  $('[data-publish]', root).addEventListener('click', async () => {
     if (!draft.hero.headline.trim()) {
       $('#h-h', root).focus();
       return toast('The hero needs a headline before it can go live.');
     }
+    const btn = $('[data-publish]', root);
+    btn.disabled = true;
+    btn.textContent = LIVE ? 'Publishing…' : 'Publish';
     try {
-      update((s) => {
+      await update((s) => {
         s.content = { ...structuredClone(draft), publishedAt: Date.now() };
       });
-      toast('Published. Reload the storefront to see it.');
+      toast(LIVE ? 'Published. The storefront shows it on the next page load.' : 'Published. Reload the storefront to see it.');
       renderContent(root, true);
     } catch (e) {
-      toast(e.message === 'storage-full' ? 'Browser storage is full. Use smaller photos, or discard an upload.' : 'Could not publish.');
+      // live failures are also reported by the global handler; demo failures (storage full) only here
+      if (!LIVE) toast(describeError(e));
+      btn.disabled = false;
+      btn.textContent = 'Publish';
     }
   });
 }

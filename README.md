@@ -27,10 +27,66 @@ npm run build:single   # one self-contained index.html -> dist-single/
 
 ## Admin portal (`/admin/`)
 
-Open `/admin/` (built from `admin/index.html`, code in `src/admin/`). Views: Overview, Products, Orders, Editorial.
+Open `/admin/` (built from `admin/index.html`, code in `src/admin/`). Views: Overview, Products, Orders, Editorial, Settings.
 
-- `npm run build` outputs the storefront at `/` and the admin at `/admin/`.
-- `npm run build:single` / `npm run build:single:admin` each produce one self-contained HTML file (storefront / admin).
-- Storefront and admin share one store (`src/store.js`, localStorage key `vertu.admin.v1`). Editing in the admin and reloading the storefront shows the change (stock, prices, sold-out colours, hero, collection highlights, announcement bar). The two only share data when served from the same origin, which is why the single-file previews do not sync with each other.
-- **This is sample data, saved per browser, with no sign-in.** Before going live: replace `load`/`persist`/`update` in `src/store.js` with API calls (keep the state shape in `src/seed.js`), add real authentication in front of `/admin/`, and store uploaded images in object storage instead of data URLs.
-- Orders in the admin are invented sample orders. Checkout in the storefront does not create orders yet.
+The site runs in one of two modes:
+
+| | Sample mode | Live mode |
+|---|---|---|
+| When | No Supabase keys set | `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` set |
+| Data | This browser's localStorage, seeded from `src/seed.js` | Supabase Postgres, shared by every visitor |
+| Admin sign-in | None | Email + password, then two-step verification (authenticator app) |
+| Images | Kept in the browser | Uploaded to Supabase Storage (`media` bucket) |
+
+## Going live with Supabase (Phase 1)
+
+1. **Create a project** at supabase.com. Pick the Mumbai (ap-south-1) region for Indian customers.
+2. **Create the database.** In the SQL editor, run in order:
+   - `supabase/migrations/20261112000000_phase1_core.sql`: tables, access rules, triggers, storage bucket
+   - `supabase/seed.sql`: the 15 starting products and the editorial content
+   - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
+
+   With the Supabase CLI instead: `supabase link`, then `supabase db push`, then run `seed.sql`.
+3. **Create your owner account.** Authentication → Users → Add user (tick *Auto confirm*). Then edit the email in `supabase/bootstrap_owner.sql` and run it.
+4. **Auth settings** (Authentication → URL configuration and Sign in / Providers):
+   - Site URL: your domain. Add `https://yourdomain.com/admin/` (and `http://localhost:5173/admin/` for development) to *Redirect URLs*, so password-reset links work.
+   - Turn **off** "Allow new users to sign up" until customer accounts arrive in Phase 2. Staff accounts are added by an owner.
+   - Check that TOTP multi-factor is enabled (it is by default).
+   - Set up custom SMTP (Authentication → Emails) before launch. The built-in sender is rate-limited and meant for testing.
+5. **Add the keys.** Copy `.env.example` to `.env.local` and fill in the project URL and anon/publishable key (Project Settings → API). In production, set the same two variables in your host (Vercel, Netlify and so on).
+6. `npm run dev`, open `http://localhost:5173/admin/`, sign in, scan the QR code with an authenticator app, and you're in.
+
+**Adding staff:** create their user in Supabase (step 3), then Settings → Team → add their email as Staff or Owner. They set up two-step verification on first sign-in.
+
+### What each role can do
+
+| | Shopper / public | Staff | Owner |
+|---|---|---|---|
+| See active products and published editorial | ✓ | ✓ | ✓ |
+| See draft products, orders, customer details | | ✓ | ✓ |
+| Edit products, price, stock, images; add products | | ✓ | ✓ |
+| Change order status; publish editorial | | ✓ | ✓ |
+| Remove products; change the low-stock threshold | | | ✓ |
+| Manage the team; see the activity log | | | ✓ |
+
+These rules are enforced by the database (row level security in the migration), not only by hiding buttons. Admin rights also require a two-step-verified session, so a stolen password alone is not enough.
+
+### How saving works
+
+- The storefront loads products and editorial content from the database on each visit. It keeps a cached copy and falls back to it if the database can't be reached.
+- In the admin, a change appears straight away and is written to the database in the background (`src/store.js` → `src/lib/sync.js`). If the database refuses (no permission, invalid value, network), a message explains why and the screen reloads the real data.
+- New images are resized in the browser, uploaded to Storage, and saved as permanent URLs.
+- Every stock change is recorded in `inventory_log` (shown as *Stock history* when editing a product). Every change to products, orders, editorial and the team is recorded in `audit_log` (Settings → Recent activity).
+
+### Tests
+
+- `npm test` runs both suites.
+- `npm run test:unit`: how admin edits turn into database writes and image uploads.
+- `npm run test:db`: runs the real migration and seed in an in-process Postgres and checks 43 access rules (shopper, staff with and without two-step verification, owner).
+
+### Still to do (later phases)
+
+- **Phase 2:** customer accounts, product pages, search.
+- **Phase 3:** checkout and Razorpay. Orders will be created by a server function that re-checks prices and stock. Browsers can never create orders.
+- **Phase 4:** order and shipping emails.
+- **Phase 5 onwards:** shipping (Shiprocket), invoices, legal pages, security hardening, SEO and monitoring.

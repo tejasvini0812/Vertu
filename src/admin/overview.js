@@ -1,5 +1,5 @@
 import { getState, orderTotal, money, CATEGORIES } from '../store.js';
-import { esc, $, $$, icons, countUp, enter } from './ui.js';
+import { esc, $, $$, icons, countUp, enter, listen } from './ui.js';
 
 const DAY = 86400000;
 const dayKey = (t) => {
@@ -23,6 +23,7 @@ export function metrics() {
 }
 
 export function renderOverview(root) {
+  const on = listen(root);
   const { s, threshold, revenue, active, low } = metrics();
   const today = dayKey(Date.now());
   const days = Array.from({ length: 14 }, (_, i) => today - (13 - i) * DAY);
@@ -139,11 +140,11 @@ export function renderOverview(root) {
     b.addEventListener('mouseleave', () => (readout.innerHTML = base));
     b.addEventListener('blur', () => (readout.innerHTML = base));
   });
-  root.addEventListener('click', (e) => {
+  on('click', (e) => {
     const r = e.target.closest('[data-order]');
     if (r) location.hash = `#/orders?open=${r.dataset.order}`;
   });
-  root.addEventListener('keydown', (e) => {
+  on('keydown', (e) => {
     const r = e.target.closest?.('[data-order]');
     if (r && e.key === 'Enter') location.hash = `#/orders?open=${r.dataset.order}`;
   });

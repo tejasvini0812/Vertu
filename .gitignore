@@ -4,3 +4,7 @@ dist-single
 dist-single-admin
 .vite
 .DS_Store
+dist-live
+.env
+.env.local
+.env.*.local

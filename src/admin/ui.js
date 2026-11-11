@@ -12,6 +12,7 @@ export const icons = {
   products: I('<path d="M5 8h14l1 12H4L5 8zM9 8V6a3 3 0 0 1 6 0v2"/>'),
   orders: I('<path d="M4 6h16M4 12h16M4 18h10"/>'),
   content: I('<path d="M4 5h16v14H4zM4 15l5-4 4 3 3-2 4 3"/>'),
+  settings: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
   search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
   plus: I('<path d="M12 5v14M5 12h14"/>'),
   edit: I('<path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4"/>'),
@@ -159,6 +160,17 @@ export const dropHTML = (label = 'Drop an image or click to upload', tall = fals
   `<div class="drop ${tall ? 'drop--tall' : ''}">${icons.upload}<span>${label}</span>
    <input type="file" accept="image/*" aria-label="${label}" />
    <div class="drop__actions" hidden><button type="button" class="btn" data-replace>Replace image</button></div></div>`;
+
+/* ---------- view listeners ----------
+ * Views re-render into the same #view element. Each render calls listen(root) first, which removes the
+ * previous render's root-level listeners, so handlers never stack up or fire for another view. */
+const ctrls = new WeakMap();
+export function listen(root) {
+  ctrls.get(root)?.abort();
+  const c = new AbortController();
+  ctrls.set(root, c);
+  return (type, fn) => root.addEventListener(type, fn, { signal: c.signal });
+}
 
 /* ---------- motion ---------- */
 export function enter(root) {

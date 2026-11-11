@@ -1,5 +1,6 @@
-import { getState, update, subscribe, money, CATEGORIES, skuFor, resolveImage } from '../store.js';
-import { esc, $, $$, icons, toast, confirmDialog, openDrawer, closeDrawer, drawerEl, mountDrop, dropHTML, enter } from './ui.js';
+import { getState, update, describeError, LIVE, supabase, CATEGORIES, skuFor, resolveImage } from '../store.js';
+import { session } from './auth.js';
+import { esc, $, $$, icons, toast, confirmDialog, openDrawer, closeDrawer, drawerEl, mountDrop, dropHTML, enter, listen } from './ui.js';
 
 let filter = 'all';
 let q = '';
@@ -7,18 +8,20 @@ let stockOnly = false;
 let flashId = null;
 
 const catName = (id) => CATEGORIES.find((c) => c.id === id)?.name || id;
+// Live mode saves in the background: failures are reported by the global sync-error handler in main.js.
 const safeSave = (fn, okMsg) => {
   try {
-    update(fn);
+    update(fn).catch(() => {});
     okMsg && toast(okMsg);
     return true;
   } catch (e) {
-    toast(e.message === 'storage-full' ? 'Browser storage is full. Remove some uploaded images and try again.' : 'Could not save that change.');
+    toast(describeError(e));
     return false;
   }
 };
 
 export function renderProducts(root, params) {
+  const on = listen(root);
   if (params.get('stock') === 'low') {
     stockOnly = true;
     history.replaceState(null, '', '#/products');
@@ -66,17 +69,17 @@ export function renderProducts(root, params) {
         <td><label class="switch"><input type="checkbox" data-active ${p.status === 'active' ? 'checked' : ''} aria-label="Show ${esc(p.colour)} ${p.id} in the store"><i></i><span>${p.status === 'active' ? 'Active' : 'Draft'}</span></label></td>
         <td><div class="row-actions">
           <button class="icon-btn" data-edit aria-label="Edit ${esc(p.colour)} ${p.id}">${icons.edit}</button>
-          <button class="icon-btn" data-del aria-label="Remove ${esc(p.colour)} ${p.id}">${icons.trash}</button></div></td></tr>`,
+          ${session.role === 'owner' ? `<button class="icon-btn" data-del aria-label="Remove ${esc(p.colour)} ${p.id}">${icons.trash}</button>` : ''}</div></td></tr>`,
               )
               .join('')
           : `<tr><td colspan="6"><p class="empty">No products match. ${stockOnly || q ? 'Try clearing the filters.' : ''}</p></td></tr>`
       }</tbody></table></div>`;
   flashId = null;
   enter(root);
-  wire(root);
+  wire(root, on);
 }
 
-function wire(root) {
+function wire(root, on) {
   const rerender = () => renderProducts(root, new URLSearchParams());
   $$('[data-f]', root).forEach((b) =>
     b.addEventListener('click', () => {
@@ -111,7 +114,7 @@ function wire(root) {
     if (v === p[key]) return (el.value = v);
     if (safeSave((st) => (st.products.find((x) => x.id === id)[key] = v), `${label} updated for ${p.colour}`)) rerender();
   };
-  root.addEventListener('change', (e) => {
+  on('change', (e) => {
     const t = e.target;
     if (t.matches('[data-price]')) commitNumber(t, 'price', 'Price');
     else if (t.matches('[data-stock]')) commitNumber(t, 'stock', 'Stock');
@@ -121,10 +124,10 @@ function wire(root) {
       rerender();
     }
   });
-  root.addEventListener('keydown', (e) => {
+  on('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('.cell-input, [data-stock]')) e.target.blur();
   });
-  root.addEventListener('click', async (e) => {
+  on('click', async (e) => {
     const step = e.target.closest('[data-step]');
     if (step) {
       const inp = $('[data-stock]', step.closest('td'));
@@ -185,11 +188,13 @@ function openForm(id) {
       </div>
       <div class="field"><label for="f-desc">Description</label><textarea id="f-desc" class="textarea">${esc(draft.description)}</textarea><small>Shown in the store when this colour is selected.</small></div>
       <label class="switch"><input id="f-active" type="checkbox" ${draft.status === 'active' ? 'checked' : ''}><i></i>Show in the store</label>
-    </form>`;
+    </form>
+    ${editing && LIVE ? '<div><p class="label" style="font-weight:500;margin-bottom:6px">Stock history</p><ul class="history" data-history><li class="muted">Loading…</li></ul></div>' : ''}`;
   const foot = `<button class="btn btn--ghost" data-drawer-close type="button">Cancel</button><button class="btn btn--ink" type="submit" form="pform" id="pform-save">${editing ? 'Save changes' : 'Add product'}</button>`;
   openDrawer({ title: editing ? `Edit ${editing.colour}` : 'New product', sub: editing ? `${catName(editing.category)}, ${editing.id}` : 'Added as a new colour in a collection', body, foot });
 
   const d = drawerEl;
+  if (editing && LIVE) loadHistory(editing.id, $('[data-history]', d));
   const img = mountDrop($('.drop', d), {
     src: resolveImage(draft.image),
     onChange: (data) => ((draft.image = data), ($('[data-err=img]', d).textContent = '')),
@@ -250,4 +255,24 @@ function openForm(id) {
     if (!editing) filter = cat;
     renderProducts($('#view'), new URLSearchParams());
   });
+}
+
+const REASON = { manual: 'Edited', created: 'Added', order: 'Sold', restock: 'Restocked', return: 'Returned' };
+async function loadHistory(sku, ul) {
+  const { data, error } = await supabase
+    .from('inventory_log')
+    .select('created_at, delta, stock_after, reason')
+    .eq('sku', sku)
+    .order('created_at', { ascending: false })
+    .limit(8);
+  if (!ul.isConnected) return;
+  if (error) return (ul.innerHTML = `<li class="muted">${esc(describeError(error))}</li>`);
+  ul.innerHTML = data.length
+    ? data
+        .map(
+          (r) => `<li><span>${REASON[r.reason] || esc(r.reason)}, ${new Date(r.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+          <span class="num ${r.delta > 0 ? 'up' : ''}">${r.delta > 0 ? '+' : ''}${r.delta} → ${r.stock_after}</span></li>`,
+        )
+        .join('')
+    : '<li class="muted">No changes recorded yet.</li>';
 }

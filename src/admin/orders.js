@@ -1,5 +1,5 @@
-import { getState, update, money, orderTotal, STATUSES, CATEGORIES } from '../store.js';
-import { esc, $, $$, toast, openDrawer, drawerEl, enter } from './ui.js';
+import { getState, update, describeError, money, orderTotal, STATUSES, CATEGORIES } from '../store.js';
+import { esc, $, $$, toast, openDrawer, drawerEl, enter, listen } from './ui.js';
 import { fmtDate, fmtDateTime, statusChip } from './overview.js';
 
 let filter = 'All';
@@ -13,16 +13,17 @@ function setStatus(id, status) {
   const o = getState().orders.find((x) => x.id === id);
   if (!o || o.status === status) return false;
   try {
-    update((s) => (s.orders.find((x) => x.id === id).status = status));
+    update((s) => (s.orders.find((x) => x.id === id).status = status)).catch(() => {});
     toast(`${id} marked ${status.toLowerCase()}`);
     return true;
   } catch (e) {
-    toast('Could not save that change.');
+    toast(describeError(e));
     return false;
   }
 }
 
 export function renderOrders(root, params) {
+  const on = listen(root);
   const s = getState();
   const counts = { All: s.orders.length };
   STATUSES.forEach((t) => (counts[t] = s.orders.filter((o) => o.status === t).length));
@@ -73,7 +74,7 @@ export function renderOrders(root, params) {
     n.focus();
     n.setSelectionRange(p, p);
   });
-  root.addEventListener('click', (e) => {
+  on('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (!tr) return;
     const sb = e.target.closest('[data-s]');

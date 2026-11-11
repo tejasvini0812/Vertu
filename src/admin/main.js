@@ -1,16 +1,19 @@
 import './admin.css';
-import { getState, subscribe, resetDemo, orderTotal } from '../store.js';
-import { $, $$, icons, toast, confirmDialog } from './ui.js';
+import { subscribe, resetDemo, ready, onSyncError, describeError, LIVE } from '../store.js';
+import { gate, session, signOut } from './auth.js';
+import { $, $$, esc, icons, toast, confirmDialog } from './ui.js';
 import { renderOverview, metrics } from './overview.js';
 import { renderProducts } from './products.js';
 import { renderOrders } from './orders.js';
 import { renderContent } from './content.js';
+import { renderSettings } from './settings.js';
 
 const ROUTES = {
   overview: { label: 'Overview', fn: renderOverview },
   products: { label: 'Products', fn: renderProducts },
   orders: { label: 'Orders', fn: renderOrders },
   content: { label: 'Editorial', fn: renderContent },
+  settings: { label: 'Settings', fn: renderSettings },
 };
 const view = $('#view');
 
@@ -38,24 +41,69 @@ function render() {
   markCurrent();
   window.scrollTo(0, 0);
 }
-let last = '';
-window.addEventListener('hashchange', () => {
-  const { route } = parse();
-  const same = route === last;
-  last = route;
-  if (!same || parse().params.size) render();
-  else markCurrent();
-});
-subscribe(nav);
 
-$('[data-reset]').addEventListener('click', async () => {
-  if (await confirmDialog({ title: 'Reset sample data?', body: 'Products, orders and editorial content return to the starting sample. Your edits and uploads are lost.', ok: 'Reset' })) {
-    resetDemo();
-    render();
-    toast('Sample data restored');
+async function boot() {
+  await gate();
+
+  // sidebar: who is signed in, or the sample-mode note
+  $('[data-demo-note]').hidden = LIVE;
+  $('[data-reset]').hidden = LIVE;
+  if (LIVE) {
+    const who = $('[data-who]');
+    who.hidden = false;
+    who.innerHTML = `<strong>${esc(session.email)}</strong>${session.role === 'owner' ? 'Owner' : 'Staff'}`;
+    const out = $('[data-signout]');
+    out.hidden = false;
+    out.addEventListener('click', signOut);
   }
-});
 
-nav();
-last = parse().route;
-render();
+  view.innerHTML = '<p class="empty">Loading the store…</p>';
+  try {
+    await ready('admin');
+  } catch (e) {
+    view.innerHTML = `<header class="page-head"><div><h1>Can’t load the store</h1><p>${esc(describeError(e))}</p></div></header>
+      <button class="btn btn--ink" onclick="location.reload()">Try again</button>`;
+    return;
+  }
+
+  let rerender = false;
+  onSyncError((e) => {
+    toast(describeError(e));
+    rerender = true; // the store reloads from the database next; redraw the view when it does
+  });
+  subscribe(() => {
+    nav();
+    if (rerender) {
+      rerender = false;
+      render();
+    }
+  });
+
+  let last = parse().route;
+  window.addEventListener('hashchange', () => {
+    const { route, params } = parse();
+    const same = route === last;
+    last = route;
+    if (!same || params.size) render();
+    else markCurrent();
+  });
+
+  $('[data-reset]').addEventListener('click', async () => {
+    if (
+      await confirmDialog({
+        title: 'Reset sample data?',
+        body: 'Products, orders and editorial content return to the starting sample. Your edits and uploads are lost.',
+        ok: 'Reset',
+      })
+    ) {
+      resetDemo();
+      render();
+      toast('Sample data restored');
+    }
+  });
+
+  nav();
+  render();
+}
+
+boot();

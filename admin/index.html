@@ -21,13 +21,16 @@
           <a href="#/products" data-route="products"></a>
           <a href="#/orders" data-route="orders"></a>
           <a href="#/content" data-route="content"></a>
+          <a href="#/settings" data-route="settings"></a>
         </nav>
         <div class="side__foot">
+          <p class="side__who" data-who hidden></p>
           <a class="side__link" href="../" target="_blank" rel="noopener">View storefront</a>
-          <p class="side__note">
-            Sample data, saved in this browser only. Connect a backend and sign-in before going live.
+          <p class="side__note" data-demo-note>
+            Sample mode: data is saved in this browser only. Add the Supabase keys to go live.
           </p>
           <button type="button" class="link-btn" data-reset>Reset sample data</button>
+          <button type="button" class="link-btn" data-signout hidden>Sign out</button>
         </div>
       </aside>
 

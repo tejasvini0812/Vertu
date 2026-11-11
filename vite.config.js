@@ -12,6 +12,7 @@ export default defineConfig({
   base: './',
   plugins: single ? [viteSingleFile()] : [],
   build: {
+    target: 'es2022', // top-level await: the storefront waits for the catalogue before building
     outDir: single ? (admin ? 'dist-single-admin' : 'dist-single') : 'dist',
     assetsInlineLimit: single ? 100_000_000 : 4096,
     chunkSizeWarningLimit: 1500,
