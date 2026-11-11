@@ -1,0 +1,6 @@
+node_modules
+dist
+dist-single
+dist-single-admin
+.vite
+.DS_Store

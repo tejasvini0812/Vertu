@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VERTU | Bags designed around real life</title>
+    <meta
+      name="description"
+      content="VERTU makes sling bags, men's sling bags and laptop bags built around thoughtful organisation, functionality and everyday movement."
+    />
+    <meta name="theme-color" content="#f5f3ee" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%234a7048' d='M12 1c.7 5.6 5.4 10.3 11 11-5.6.7-10.3 5.4-11 11-.7-5.6-5.4-10.3-11-11C6.6 11.3 11.3 6.6 12 1z'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="loader" aria-hidden="true">
+      <span class="loader__logo"></span>
+    </div>
+    <div class="progress" aria-hidden="true"><i></i></div>
+    <div class="cursor" aria-hidden="true"><span></span></div>
+    <canvas id="gl" aria-hidden="true"></canvas>
+
+    <div class="announce" id="announce" hidden>
+      <p></p>
+      <a href="#shop"></a>
+    </div>
+
+    <header class="nav" id="nav">
+      <nav class="nav__side" aria-label="Primary">
+        <a href="#shop">Shop</a>
+        <a href="#collections">Collections</a>
+        <a href="#craft">Our craft</a>
+      </nav>
+      <a class="logo" href="#top" aria-label="VERTU, back to top"><span></span></a>
+      <div class="nav__side nav__side--end">
+        <button type="button" class="nav__bag" data-cart-open aria-label="Open your bag">
+          Bag <span aria-hidden="true">(<span data-cart-count>0</span>)</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- HERO -->
+      <section class="hero" aria-label="VERTU">
+        <div class="hero__stage media" data-hero>
+          <img
+            class="hero__fallback"
+            src="./src/assets/img/hero-1.jpg"
+            alt="Five VERTU laptop bags in red, blue, black, yellow and green, lined up on a wooden table"
+          />
+        </div>
+        <div class="hero__scrim" aria-hidden="true"></div>
+        <div class="hero__copy">
+          <h1 data-split>The art of utility.</h1>
+          <p class="hero__sub">Bags built around how you actually move through the day.</p>
+          <div class="hero__actions">
+            <a class="btn btn--light" href="#shop" data-magnetic>Shop the collection</a>
+            <a class="text-link text-link--light" href="#collections">Explore collections</a>
+          </div>
+        </div>
+        <div class="hero__meta">
+          <p class="hero__caption" aria-live="off"></p>
+          <div class="hero__ticks" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+      </section>
+
+      <!-- STATEMENT -->
+      <section class="statement" aria-labelledby="statement-title">
+        <h2 id="statement-title" class="statement__big" data-scrub>
+          A bag should do more than carry your belongings. It should simplify your day.
+        </h2>
+        <p class="statement__small">
+          Every design is built around thoughtful organisation, functionality and everyday movement.
+        </p>
+      </section>
+
+      <!-- COLLECTIONS -->
+      <section class="collections" id="collections" aria-labelledby="collections-title">
+        <header class="section-head">
+          <h2 id="collections-title" data-split>Three ways to carry.</h2>
+          <p>Each VERTU bag is built around one idea: everything in its place, ready for the day.</p>
+        </header>
+
+        <article class="collection">
+          <a
+            class="collection__media media"
+            href="#buy"
+            data-select="sling"
+            data-gl
+            data-reveal
+            data-axis="y"
+            data-par="0.07"
+            data-hover
+            data-cursor="Choose"
+            aria-label="Shop Sling Bags"
+          >
+            <img
+              src="./src/assets/img/sling.jpg"
+              alt="A mustard yellow VERTU sling bag with teal handles and a coiled teal strap"
+              width="577"
+              height="1024"
+            />
+          </a>
+          <div class="collection__text">
+            <h3 data-split>Sling Bags</h3>
+            <p>
+              Small enough for the day, organised enough for everything in it. Carry it by the
+              handles or across the body.
+            </p>
+            <div class="collection__row">
+              <span class="price">From <span data-price="sling"></span></span>
+              <a class="text-link" href="#buy" data-select="sling">Shop Sling Bags</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="collection collection--flip">
+          <a
+            class="collection__media media"
+            href="#buy"
+            data-select="mens"
+            data-gl
+            data-reveal
+            data-axis="x"
+            data-par="0.07"
+            data-hover
+            data-cursor="Choose"
+            aria-label="Shop Men's Sling Bags"
+          >
+            <img
+              src="./src/assets/img/mens.jpg"
+              alt="A black VERTU men's sling bag with a wide beige webbing strap, on a tan backdrop"
+              width="717"
+              height="956"
+            />
+          </a>
+          <div class="collection__text">
+            <h3 data-split>Men&rsquo;s Sling Bags</h3>
+            <p>
+              A slim crossbody with a wide webbing strap and a zip pocket on the front, for the
+              things you reach for most.
+            </p>
+            <div class="collection__row">
+              <span class="price">From <span data-price="mens"></span></span>
+              <a class="text-link" href="#buy" data-select="mens">Shop Men&rsquo;s Sling Bags</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="collection">
+          <a
+            class="collection__media media"
+            href="#buy"
+            data-select="laptop"
+            data-gl
+            data-reveal
+            data-axis="x"
+            data-flip="1"
+            data-par="0.07"
+            data-hover
+            data-cursor="Choose"
+            aria-label="Shop Laptop Bags"
+          >
+            <img
+              src="./src/assets/img/laptop.jpg"
+              alt="A brown VERTU laptop bag with navy handles and a front pocket"
+              width="628"
+              height="837"
+            />
+          </a>
+          <div class="collection__text">
+            <h3 data-split>Laptop Bags</h3>
+            <p>
+              A structured carry-all with room for a laptop and everything that travels with it,
+              kept apart and easy to find.
+            </p>
+            <div class="collection__row">
+              <span class="price">From <span data-price="laptop"></span></span>
+              <a class="text-link" href="#buy" data-select="laptop">Shop Laptop Bags</a>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- MARQUEE -->
+      <section class="marquee" aria-label="What VERTU is built on">
+        <div class="marquee__track" data-marquee>
+          <span>Smart organisation</span>
+          <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c.7 5.6 5.4 10.3 11 11-5.6.7-10.3 5.4-11 11-.7-5.6-5.4-10.3-11-11C6.6 11.3 11.3 6.6 12 1z" /></svg>
+          <span>Modular design</span>
+          <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c.7 5.6 5.4 10.3 11 11-5.6.7-10.3 5.4-11 11-.7-5.6-5.4-10.3-11-11C6.6 11.3 11.3 6.6 12 1z" /></svg>
+          <span>Lightweight build</span>
+          <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c.7 5.6 5.4 10.3 11 11-5.6.7-10.3 5.4-11 11-.7-5.6-5.4-10.3-11-11C6.6 11.3 11.3 6.6 12 1z" /></svg>
+          <span>Everyday utility</span>
+          <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c.7 5.6 5.4 10.3 11 11-5.6.7-10.3 5.4-11 11-.7-5.6-5.4-10.3-11-11C6.6 11.3 11.3 6.6 12 1z" /></svg>
+        </div>
+      </section>
+
+      <!-- THE EDIT -->
+      <section class="edit" id="shop" aria-labelledby="edit-title">
+        <header class="section-head">
+          <h2 id="edit-title" data-split>The edit.</h2>
+          <p>
+            Start with the pieces people reach for first, then take a closer look at how they are put
+            together.
+          </p>
+        </header>
+
+        <div class="edit__grid">
+          <div class="edit__col" data-depth="30">
+            <article class="card" data-product="sling">
+              <a class="media card__media" href="#buy" data-select="sling" data-gl data-reveal data-axis="y" data-par="0.05" data-hover data-cursor="Choose" style="--ar: 4/5" aria-label="Choose a Sling Bag colour">
+                <img src="./src/assets/img/sling.jpg" alt="Mustard yellow VERTU sling bag with teal handles" width="577" height="1024" />
+              </a>
+              <div class="card__body">
+                <div>
+                  <h3>Sling Bag</h3>
+                  <p class="price" data-price="sling"></p>
+                </div>
+                <button type="button" class="add" data-add="sling" aria-label="Add Sling Bag to bag">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  Add to bag
+                </button>
+              </div>
+            </article>
+
+            <article class="card card--detail">
+              <div class="media card__media" data-gl data-reveal data-axis="y" data-par="0.05" data-hover data-cursor="Look" style="--ar: 3/4">
+                <img src="./src/assets/img/detail-organiser.jpg" alt="Looking down into a black VERTU bag holding a laptop, a steel bottle, a notebook and a lunch box in separate compartments" width="896" height="1195" />
+              </div>
+              <p class="card__note">A laptop, a bottle, a notebook and lunch, each with its own place.</p>
+            </article>
+          </div>
+
+          <div class="edit__col" data-depth="-10">
+            <article class="card card--detail">
+              <div class="media card__media" data-gl data-reveal data-axis="x" data-par="0.05" data-hover data-cursor="Look" style="--ar: 4/5">
+                <img src="./src/assets/img/detail-pocket.jpg" alt="Inside a mustard canvas VERTU bag, with a cream pocket stitched to the lining" width="736" height="942" />
+              </div>
+              <p class="card__note">Inside pockets that keep small things where you left them.</p>
+            </article>
+
+            <article class="card" data-product="laptop">
+              <a class="media card__media" href="#buy" data-select="laptop" data-gl data-reveal data-axis="y" data-par="0.05" data-hover data-cursor="Choose" style="--ar: 3/4" aria-label="Choose a Laptop Bag colour">
+                <img src="./src/assets/img/laptop.jpg" alt="Brown VERTU laptop bag with navy handles" width="628" height="837" />
+              </a>
+              <div class="card__body">
+                <div>
+                  <h3>Laptop Bag</h3>
+                  <p class="price" data-price="laptop"></p>
+                </div>
+                <button type="button" class="add" data-add="laptop" aria-label="Add Laptop Bag to bag">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  Add to bag
+                </button>
+              </div>
+            </article>
+          </div>
+
+          <div class="edit__col" data-depth="80">
+            <article class="card" data-product="mens">
+              <a class="media card__media" href="#buy" data-select="mens" data-gl data-reveal data-axis="x" data-flip="1" data-par="0.05" data-hover data-cursor="Choose" style="--ar: 3/4" aria-label="Choose a Men's Sling Bag colour">
+                <img src="./src/assets/img/mens.jpg" alt="Black VERTU men's sling bag with a wide beige strap" width="717" height="956" />
+              </a>
+              <div class="card__body">
+                <div>
+                  <h3>Men&rsquo;s Sling Bag</h3>
+                  <p class="price" data-price="mens"></p>
+                </div>
+                <button type="button" class="add" data-add="mens" aria-label="Add Men's Sling Bag to bag">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  Add to bag
+                </button>
+              </div>
+            </article>
+
+            <article class="card card--detail">
+              <div class="media card__media" data-gl data-reveal data-axis="y" data-par="0.05" data-hover data-cursor="Look" style="--ar: 1/1">
+                <img src="./src/assets/img/detail-hardware.jpg" alt="Close view of a metal clip and ring attaching a strap inside a cream VERTU bag" width="671" height="741" />
+              </div>
+              <p class="card__note">Metal clips and rings that hold the strap and stay out of the way.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- CRAFT (pinned) -->
+      <section class="craft" id="craft" aria-labelledby="craft-title">
+        <div class="craft__sticky">
+          <div class="craft__media media" data-craft-media>
+            <img src="./src/assets/img/detail-organiser.jpg" alt="Looking down into an organised VERTU bag" width="896" height="1195" />
+          </div>
+          <div class="craft__copy">
+            <h2 id="craft-title" data-split>Designed around real life.</h2>
+            <p class="craft__lede">Creating systems that organise everything in one place.</p>
+            <ul class="craft__list">
+              <li class="craft__item is-active" data-step="0">
+                <h3>Smart organisation</h3>
+                <p>A place for the laptop, the bottle, the charger and the keys, so nothing goes looking for itself.</p>
+              </li>
+              <li class="craft__item" data-step="1">
+                <h3>Modular design</h3>
+                <p>Pockets and straps that do what you need today, and adapt when your day changes.</p>
+              </li>
+              <li class="craft__item" data-step="2">
+                <h3>Lightweight build</h3>
+                <p>Made to carry a full day without feeling like it.</p>
+              </li>
+              <li class="craft__item" data-step="3">
+                <h3>Everyday utility</h3>
+                <p>For commutes, classrooms and long workdays, and the places in between.</p>
+              </li>
+            </ul>
+            <div class="craft__rail" aria-hidden="true"><i></i></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SOCIAL PROOF -->
+      <section class="proof" aria-labelledby="proof-title">
+        <header class="section-head">
+          <h2 id="proof-title" data-split>Carried every day.</h2>
+          <p>
+            Follow along on Instagram at
+            <a class="text-link" href="https://instagram.com/shopvertu" rel="noopener">@shopvertu</a>.
+          </p>
+        </header>
+
+        <div class="quotes">
+          <figure class="quote">
+            <blockquote>
+              <p>Add a verified customer review here: one or two sentences about everyday use.</p>
+            </blockquote>
+            <figcaption>Customer name, City <span class="tag">Placeholder</span></figcaption>
+          </figure>
+          <figure class="quote">
+            <blockquote>
+              <p>Add a verified customer review here: what they carry and how the bag holds up.</p>
+            </blockquote>
+            <figcaption>Customer name, City <span class="tag">Placeholder</span></figcaption>
+          </figure>
+          <figure class="quote">
+            <blockquote>
+              <p>Add a verified customer review here: what made them choose VERTU.</p>
+            </blockquote>
+            <figcaption>Customer name, City <span class="tag">Placeholder</span></figcaption>
+          </figure>
+        </div>
+
+        <aside class="workplace">
+          <h3>We&rsquo;d love to bring VERTU to your workplace.</h3>
+          <a class="btn btn--ink" href="mailto:contact.shopvertu@gmail.com?subject=VERTU%20for%20our%20workplace" data-magnetic>Write to us</a>
+        </aside>
+      </section>
+
+      <!-- QUICK BUY -->
+      <section class="buy" id="buy" aria-labelledby="buy-title">
+        <header class="section-head">
+          <h2 id="buy-title" data-split>Choose yours.</h2>
+        </header>
+        <div class="buy__grid">
+          <div class="buy__media media" data-buy-media>
+            <img src="./src/assets/img/sling.jpg" alt="" width="577" height="1024" />
+          </div>
+          <div class="buy__panel">
+            <div class="tabs" role="tablist" aria-label="Choose a bag">
+              <button type="button" role="tab" id="tab-sling" data-tab="sling" aria-selected="true">Sling Bag</button>
+              <button type="button" role="tab" id="tab-mens" data-tab="mens" aria-selected="false" tabindex="-1">Men&rsquo;s Sling Bag</button>
+              <button type="button" role="tab" id="tab-laptop" data-tab="laptop" aria-selected="false" tabindex="-1">Laptop Bag</button>
+            </div>
+            <div class="buy__detail" role="tabpanel" aria-live="polite">
+              <h3 class="buy__name" data-buy-name>Sling Bag</h3>
+              <p class="buy__price price" data-buy-price></p>
+              <p class="buy__stock" data-buy-stock aria-live="polite"></p>
+              <p class="buy__blurb" data-buy-blurb></p>
+
+              <fieldset class="swatches">
+                <legend>Colour: <span data-buy-colour></span></legend>
+                <div class="swatches__row" data-swatches></div>
+              </fieldset>
+
+              <div class="buy__actions">
+                <div class="qty qty--lg" role="group" aria-label="Quantity">
+                  <button type="button" data-qty="-1" aria-label="Decrease quantity">&minus;</button>
+                  <output data-qty-out aria-live="polite">1</output>
+                  <button type="button" data-qty="1" aria-label="Increase quantity">+</button>
+                </div>
+                <button type="button" class="btn btn--accent" data-buy-add data-magnetic>Add to bag</button>
+              </div>
+              <button type="button" class="text-link" data-buy-now>Buy now</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer__top">
+        <span class="footer__logo" role="img" aria-label="VERTU"></span>
+        <p class="footer__line">A utility-first bag brand designed for modern everyday life.</p>
+      </div>
+      <div class="footer__cols">
+        <nav aria-label="Footer">
+          <a href="#shop">Shop</a>
+          <a href="#collections">Collections</a>
+          <a href="#craft">Our craft</a>
+        </nav>
+        <div>
+          <a href="mailto:contact.shopvertu@gmail.com">contact.shopvertu@gmail.com</a>
+          <a href="https://instagram.com/shopvertu" rel="noopener">@shopvertu</a>
+        </div>
+        <p class="footer__fine">&copy; <span data-year></span> VERTU</p>
+      </div>
+    </footer>
+
+    <!-- BAG DRAWER -->
+    <aside class="cart" id="cart" role="dialog" aria-modal="true" aria-labelledby="cart-title">
+      <div class="cart__scrim" data-cart-close></div>
+      <div class="cart__panel">
+        <header class="cart__head">
+          <h2 id="cart-title">Your bag</h2>
+          <button type="button" class="link-btn" data-cart-close>Close</button>
+        </header>
+        <ul class="cart__list" hidden></ul>
+        <p class="cart__empty">
+          Your bag is empty. Pick a colour below and it will wait for you here.
+        </p>
+        <div class="cart__foot" hidden>
+          <div class="cart__sum"><span>Subtotal</span><strong data-subtotal></strong></div>
+          <button type="button" class="btn btn--accent btn--block" data-checkout>Checkout</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
