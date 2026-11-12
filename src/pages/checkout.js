@@ -66,7 +66,7 @@ function render() {
         <section class="co-step" aria-labelledby="co-contact">
           <h2 id="co-contact">Contact</h2>
           <div class="form-grid">
-            <div class="field"><label for="c-email">Email</label><input class="input" id="c-email" name="email" type="email" autocomplete="email" value="${esc(u?.email || '')}" ${u ? 'readonly' : ''} required /><small>For your order confirmation.</small></div>
+            <div class="field"><label for="c-email">Email</label><input class="input" id="c-email" name="email" type="email" autocomplete="email" value="${esc(u?.email || '')}" ${u ? 'readonly' : ''} required /><small>For your order updates. <a href="../legal/?p=privacy">How we use your details</a></small></div>
             <div class="field"><label for="c-phone">Mobile number</label><div class="inline"><span class="input prefix">+91</span><input class="input" id="c-phone" name="phone" inputmode="numeric" autocomplete="tel-national" maxlength="10" required /></div><small>The courier may call about delivery.</small></div>
           </div>
         </section>
@@ -104,7 +104,7 @@ function render() {
 
         <div class="co-problems" data-problems role="alert" hidden></div>
         <button class="btn btn--accent btn--block co-pay" type="submit" data-pay disabled>Loading total…</button>
-        <p class="fine co-legal">By placing your order you agree to our terms, shipping and returns policies. Prices include GST.</p>
+        <p class="fine co-legal">By placing your order you agree to our <a href="../legal/?p=terms">terms</a> and our <a href="../legal/?p=shipping">shipping</a>, <a href="../legal/?p=returns">returns</a> and <a href="../legal/?p=cancellation">cancellation</a> policies. Prices include GST. Nothing is added after this page.</p>
       </form>
 
       <aside class="summary" aria-labelledby="co-sum">

@@ -47,3 +47,6 @@ verify_jwt = false
 # Shiprocket refuses webhook URLs containing "shiprocket"/"sr"/"kr", so the same code is deployed as "courier-updates".
 [functions.courier-updates]
 verify_jwt = false
+
+[functions.admin-privacy]
+verify_jwt = false

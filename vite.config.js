@@ -28,6 +28,8 @@ export default defineConfig({
             order: resolve('order/index.html'),
             newsletter: resolve('newsletter/index.html'),
             invoice: resolve('invoice/index.html'),
+            legal: resolve('legal/index.html'),
+            contact: resolve('contact/index.html'),
             admin: resolve('admin/index.html'),
           },
     },

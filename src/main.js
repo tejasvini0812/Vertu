@@ -7,6 +7,8 @@ import { PRODUCTS, HERO_SLIDES, CRAFT_IMAGES, CONTENT, fmt, firstInStock } from 
 import { cart, initCartUI, toast } from './cart.js';
 import { bindAccountLink } from './chrome.js';
 import { newsletterForm, bindNewsletterForms } from './newsletter.js';
+import { legalLinks, fillEntity } from './legal/footer.js';
+import { initConsent } from './consent.js';
 import './customer.js';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -486,6 +488,12 @@ if (newsSlot) {
   newsSlot.outerHTML = newsletterForm();
   bindNewsletterForms();
 }
+const legalSlot = document.querySelector('[data-legal-slot]');
+if (legalSlot) {
+  legalSlot.outerHTML = legalLinks('');
+  fillEntity();
+}
+initConsent();
 const drawer = initCartUI({
   onOpen: () => lenis && lenis.stop(),
   onClose: () => lenis && lenis.start(),

@@ -47,6 +47,7 @@ The site runs in one of two modes:
    - `supabase/migrations/20261112020000_phase3_checkout.sql`: pricing, stock holds, orders and payments, coupons, refunds
    - `supabase/migrations/20261112030000_phase4_emails.sql`: email outbox and triggers, newsletter, order tracking
    - `supabase/migrations/20261112040000_phase5_fulfilment.sql`: shipments and tracking, GST invoices, returns, delivery estimates
+   - `supabase/migrations/20261112050000_phase6_compliance.sql`: legal and care details, support tickets, privacy export and erasure, product declarations and MRP
    - `supabase/seed.sql`: the 15 starting products, collection details and editorial content (safe to re-run)
    - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
 
@@ -209,6 +210,42 @@ SMS and WhatsApp updates are not included. They need an Indian provider (MSG91, 
    - Shiprocket rejects webhook URLs containing "shiprocket", "sr" or "kr". That's why the function is called *courier-updates*. If your project reference itself contains "sr" or "kr", put a custom domain in front.
 5. Book a test order. Shiprocket bills courier charges to your Shiprocket wallet, so keep it topped up.
 
+## Legal and compliance (Phase 6)
+
+> The policies and disclosures here are a careful starting point built from the 2026 Indian rules, not legal advice. Have a lawyer read them before launch, then record the review date in Settings.
+
+**Policy pages** (`/legal/?p=privacy|terms|shipping|returns|cancellation`) are written from your Settings: legal name, registered address, GSTIN, care and grievance contacts, return window, dispatch days, return shipping fee and COD rules. When you change a setting, the policy text changes with it. Every page footer links to them, shows who the seller is, and has a *Privacy choices* link.
+
+**Contact and grievances** (`/contact/`) follow the Consumer Protection (E-Commerce) Amendment Rules 2026:
+- The page shows the seller, registered office, GSTIN, customer care contacts and hours, the grievance officer, and the National Consumer Helpline (1915).
+- A complaint gets a reference (`VRT-T-1001`…), and the customer immediately receives an acknowledgement email with a copy of their message. That covers the 48-hour acknowledgement rule.
+- Each ticket is due within one month. *Support* in the admin shows open tickets, and flags ones that are overdue or due within a week.
+- Order pages link to the contact form with the order number already filled in. The form is limited to 5 messages per email per day and has a spam trap.
+
+**Privacy requests** (DPDP Act 2023 and Rules 2025). Customers ask from their account; owners see the requests under Support.
+- *Export* downloads everything held about the person as JSON.
+- *Erase* deletes their account, addresses, wishlist, bag, newsletter and stock alerts, and anonymises closed tickets. Orders and GST invoices are kept for the 8 years tax law requires, no longer linked to an account.
+- The person is emailed when their request arrives and again when it's done.
+
+**Product declarations** (Legal Metrology rule 6(10)). Under Products → *Collection details*, fill in each collection's generic name, net quantity, country of origin, maker/importer and month of manufacture. Each product's MRP (inclusive of all taxes) goes on the product form, and it can't be lower than the price. Both appear on the product page under *Product information*. The page shows a "was" price only when the MRP is higher than the price.
+
+**Settings → Compliance checklist** shows what is still missing: grievance officer, care contacts, declarations and MRPs, lawyer review, self-audit.
+
+**Settings → Dark patterns self-audit** walks through the 13 patterns in the CCPA's 2023 guidelines, from false urgency to drip pricing. You can record the audit only once every box is ticked, and the contact page then shows its date. Repeat it every year.
+
+**Cookie consent:** the site uses no analytics or advertising cookies today, only what's needed to keep you signed in and remember your bag. That's why no banner appears. If you later set `VITE_ANALYTICS_PROVIDER`, a consent banner appears, and analytics stays off until the visitor agrees.
+
+### Setting up Phase 6
+
+1. Run the new migration: `supabase db push`, which applies `20261112050000_phase6_compliance.sql`.
+2. Deploy the new function: `supabase functions deploy admin-privacy`
+3. In the admin, Settings:
+   - *Legal and customer care*: registered address, care email, phone and hours, grievance officer, dispatch days, return shipping fee.
+   - Then fill in the declarations for each collection, and an MRP for each product.
+   - Complete the dark-patterns self-audit.
+   - Work through the compliance checklist until it's clear.
+4. Note: the DPDP Rules' main duties apply from 14 May 2027, and the e-commerce amendments from 1 Jan 2027. Personal-data breaches must be reported to the Data Protection Board and affected people within 72 hours.
+
 ### What each role can do
 
 | | Shopper / public | Staff | Owner |
@@ -223,7 +260,8 @@ SMS and WhatsApp updates are not included. They need an Indian provider (MSG91, 
 | Book couriers, print labels, issue invoices; approve, pick up and check in returns | | ✓ | ✓ |
 | Cancel and refund orders (including return refunds); shipping, payment and business settings | | | ✓ |
 | Remove products; change the low-stock threshold | | | ✓ |
-| Manage the team; see the activity log and data requests | | | ✓ |
+| Answer support tickets; edit collection declarations and MRPs | | ✓ | ✓ |
+| Manage the team; see the activity log; export or erase personal data; legal settings and self-audit | | | ✓ |
 
 These rules are enforced by the database (row level security in the migration), not only by hiding buttons. Admin rights also require a two-step-verified session, so a stolen password alone is not enough.
 
@@ -238,7 +276,7 @@ These rules are enforced by the database (row level security in the migration), 
 
 - `npm test` runs both suites.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
-- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 206 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, which emails are queued when, tracking updates, GST invoice maths and numbering, and the returns lifecycle.
+- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 225 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, which emails are queued when, tracking updates, GST invoice maths and numbering, the returns lifecycle, support tickets, and privacy export and erasure.
 - `tests/payments.test.mjs`: the Edge Function logic against that same database with a fake Razorpay. Covers signatures, forged and replayed payments, webhooks, retries, Razorpay outages, refunds and cancellations.
 - `tests/pricing-parity.test.mjs`: the browser's pricing matches the database's.
 - `tests/shipping.test.mjs`: the Shiprocket logic against the real database with a fake Shiprocket. Covers login caching and re-login, parcel and order payloads, booking, a failed tracking number followed by a retry, cancelling, manual tracking sync, reverse pickups, delivery estimates and webhook parsing.
@@ -246,6 +284,5 @@ These rules are enforced by the database (row level security in the migration), 
 
 ### Still to do (later phases)
 
-- **Phase 6:** legal pages (privacy, terms, shipping, returns, cancellation, contact) and the e-commerce rules disclosures. Checkout already links to them, so they're needed before launch.
 - **Phase 7:** security hardening, performance, SEO (prerendered product pages, sitemap), analytics, monitoring and backups.
 - Later: credit notes for refunds (ask your accountant whether you need them), customers list, bulk product import, SMS/WhatsApp.

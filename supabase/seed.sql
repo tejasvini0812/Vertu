@@ -14,6 +14,10 @@ update public.categories set description = 'A structured carry-all with room for
 update public.categories set package = '{"weight":0.6,"length":32,"breadth":12,"height":28}'::jsonb where id = 'sling' and package = '{"weight": 0.5, "length": 30, "breadth": 10, "height": 25}'::jsonb;
 update public.categories set package = '{"weight":0.4,"length":26,"breadth":8,"height":30}'::jsonb where id = 'mens' and package = '{"weight": 0.5, "length": 30, "breadth": 10, "height": 25}'::jsonb;
 update public.categories set package = '{"weight":1,"length":42,"breadth":14,"height":34}'::jsonb where id = 'laptop' and package = '{"weight": 0.5, "length": 30, "breadth": 10, "height": 25}'::jsonb;
+-- Listing declarations (Phase 6, Legal Metrology). Fill in the maker and date in the admin.
+update public.categories set declarations = '{"generic_name":"Sling Bag","net_quantity":"1 N (one bag)","country_of_origin":"India","maker":"","made_on":""}'::jsonb where id = 'sling' and declarations = '{}'::jsonb;
+update public.categories set declarations = '{"generic_name":"Men’s Sling Bag","net_quantity":"1 N (one bag)","country_of_origin":"India","maker":"","made_on":""}'::jsonb where id = 'mens' and declarations = '{}'::jsonb;
+update public.categories set declarations = '{"generic_name":"Laptop Bag","net_quantity":"1 N (one bag)","country_of_origin":"India","maker":"","made_on":""}'::jsonb where id = 'laptop' and declarations = '{}'::jsonb;
 
 insert into public.products (id, category, colour, hex, price, stock, status, image, description, sort) values
   ('VRT-SL-CRI', 'sling', 'Crimson', '#a82a2e', 1799, 14, 'active', 'asset:sling', 'Compact and organised, with a detachable strap so it carries by hand or across the body.', 0),

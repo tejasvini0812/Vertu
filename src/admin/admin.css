@@ -1682,3 +1682,29 @@ code {
 .rate input {
   accent-color: var(--accent);
 }
+.msg {
+  padding: 14px 16px;
+  background: var(--paper-2);
+  white-space: pre-wrap;
+  font-size: 0.9375rem;
+}
+.checklist li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--stone);
+  font-size: 0.9375rem;
+}
+.checklist .ok {
+  color: var(--accent);
+  font-weight: 700;
+}
+.checklist .no {
+  color: var(--ink);
+  font-weight: 700;
+}
+.checklist small {
+  display: block;
+  color: var(--ink-2);
+}

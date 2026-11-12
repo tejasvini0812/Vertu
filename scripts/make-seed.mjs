@@ -19,6 +19,10 @@ out += `-- Parcel sizes (Phase 5). Only replaces the generic default.\n`;
 for (const [id, pk] of Object.entries(PACKAGES)) {
   out += `update public.categories set package = ${q(JSON.stringify(pk))}::jsonb where id = ${q(id)} and package = '{"weight": 0.5, "length": 30, "breadth": 10, "height": 25}'::jsonb;\n`;
 }
+out += `-- Listing declarations (Phase 6, Legal Metrology). Fill in the maker and date in the admin.\n`;
+for (const c of CATEGORIES) {
+  out += `update public.categories set declarations = ${q(JSON.stringify({ generic_name: c.unit, net_quantity: '1 N (one bag)', country_of_origin: 'India', maker: '', made_on: '' }))}::jsonb where id = ${q(c.id)} and declarations = '{}'::jsonb;\n`;
+}
 out += `\n`;
 out += `insert into public.products (id, category, colour, hex, price, stock, status, image, description, sort) values\n`;
 out += s.products

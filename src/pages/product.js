@@ -9,6 +9,8 @@ import { liveEstimate, validPin } from '../delivery.js';
 import { esc, $, $$, wishButton, bindWishButtons, tile } from './ui.js';
 
 const { drawer } = mountChrome();
+import { legalInfo } from '../legal/info.js';
+const legal = await legalInfo().catch(() => null);
 const main = $('#main');
 const params = new URLSearchParams(location.search);
 const p = PRODUCTS[params.get('c')];
@@ -40,6 +42,7 @@ function render() {
       <section class="pdp__info" aria-labelledby="pdp-name">
         <h1 class="pdp__name" id="pdp-name">${esc(p.name)}</h1>
         <p class="pdp__price" data-price></p>
+        <p class="pdp__mrp fine" data-mrp></p>
         <p class="pdp__stock" data-stock aria-live="polite"></p>
         <p class="pdp__desc" data-desc></p>
         <fieldset class="swatches"><legend>Colour: <span data-colour-name></span></legend><div class="swatches__row" role="radiogroup" data-swatches></div></fieldset>
@@ -69,6 +72,7 @@ function render() {
           ${features.length ? `<details open><summary>Design details</summary><div class="acc__body"><ul>${features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div></details>` : ''}
           ${specs.length ? `<details><summary>Specifications</summary><div class="acc__body"><dl class="specs">${specs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div></details>` : ''}
           ${p.details.care ? `<details><summary>Care</summary><div class="acc__body"><p>${esc(p.details.care)}</p></div></details>` : ''}
+          <details><summary>Product information</summary><div class="acc__body"><dl class="specs" data-decl></dl></div></details>
           <details><summary>Questions</summary><div class="acc__body"><p>Write to <a class="text-link" href="mailto:contact.shopvertu@gmail.com">contact.shopvertu@gmail.com</a> and a person will reply.</p></div></details>
         </div>
       </section>
@@ -107,6 +111,15 @@ function render() {
     document.querySelector('meta[name=description]').setAttribute('content', `${c.name} ${p.name} by VERTU, ${fmt(c.price)}. ${p.description}`.slice(0, 160));
     $('[data-crumb]', main).textContent = `${c.name} ${p.name}`;
     $('[data-price]', main).textContent = fmt(c.price);
+    $('[data-mrp]', main).textContent = c.mrp > c.price ? `MRP ${fmt(c.mrp)} (inclusive of all taxes)` : 'MRP, inclusive of all taxes';
+    const d = p.declarations || {};
+    const rows = [
+      ['Generic name', d.generic_name], ['Net quantity', d.net_quantity], ['MRP', `${fmt(c.mrp)} (inclusive of all taxes)`],
+      ['Country of origin', d.country_of_origin], ['Manufactured or packed by', d.maker || legal?.name], ['Month and year of manufacture', d.made_on],
+      ['Dimensions', (p.details.specs || {}).Dimensions], ['Sold by', legal ? `${legal.name}${legal.address ? `, ${legal.address}` : ''}` : ''],
+      ['Customer care', legal ? `${legal.care_email}${legal.care_phone ? `, ${legal.care_phone}` : ''}` : ''],
+    ].filter(([, v]) => v && String(v).trim());
+    $('[data-decl]', main).innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
     const st = $('[data-stock]', main);
     st.textContent = sold ? 'Sold out in this colour' : c.stock <= 5 ? `Only ${c.stock} left` : 'In stock';
     st.classList.toggle('is-low', !sold && c.stock <= 5);

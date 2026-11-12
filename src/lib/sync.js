@@ -6,7 +6,7 @@
  * set of database writes, and `apply(client, ops)` performs them (uploading any new images first).
  */
 
-export const PRODUCT_FIELDS = ['category', 'colour', 'hex', 'price', 'stock', 'status', 'image', 'description'];
+export const PRODUCT_FIELDS = ['category', 'colour', 'hex', 'price', 'stock', 'status', 'image', 'description', 'mrp'];
 
 export const productFromRow = (r) => ({
   id: r.id,
@@ -18,6 +18,7 @@ export const productFromRow = (r) => ({
   status: r.status,
   image: r.image,
   description: r.description,
+  mrp: r.mrp ?? null,
 });
 
 export const settingsFromRow = (r) => ({
@@ -41,6 +42,18 @@ export const settingsFromRow = (r) => ({
   businessPhone: r.business_phone || '',
   invoicePrefix: r.invoice_prefix || 'VRT',
   returnWindowDays: r.return_window_days ?? 7,
+  registeredAddress: r.registered_address || '',
+  careEmail: r.care_email || '',
+  carePhone: r.care_phone || '',
+  careHours: r.care_hours || '',
+  grievanceName: r.grievance_name || '',
+  grievanceTitle: r.grievance_title || 'Grievance Officer',
+  grievanceEmail: r.grievance_email || '',
+  grievancePhone: r.grievance_phone || '',
+  dispatchDays: r.dispatch_days ?? 2,
+  returnShippingFee: r.return_shipping_fee ?? 0,
+  policiesUpdatedAt: r.policies_updated_at || '',
+  darkPatternsAudit: r.dark_patterns_audit || {},
 });
 const SETTINGS_COLUMNS = {
   lowStock: 'low_stock',
@@ -63,9 +76,21 @@ const SETTINGS_COLUMNS = {
   businessPhone: 'business_phone',
   invoicePrefix: 'invoice_prefix',
   returnWindowDays: 'return_window_days',
+  registeredAddress: 'registered_address',
+  careEmail: 'care_email',
+  carePhone: 'care_phone',
+  careHours: 'care_hours',
+  grievanceName: 'grievance_name',
+  grievanceTitle: 'grievance_title',
+  grievanceEmail: 'grievance_email',
+  grievancePhone: 'grievance_phone',
+  dispatchDays: 'dispatch_days',
+  returnShippingFee: 'return_shipping_fee',
+  policiesUpdatedAt: 'policies_updated_at',
+  darkPatternsAudit: 'dark_patterns_audit',
 };
 // text settings whose empty value must be stored as NULL (they have format checks)
-const NULLABLE = new Set(['notify_email', 'pickup_pin', 'gstin', 'business_phone']);
+const NULLABLE = new Set(['notify_email', 'pickup_pin', 'gstin', 'business_phone', 'care_email', 'care_phone', 'grievance_email', 'grievance_phone', 'policies_updated_at']);
 export const COUPON_FIELDS = ['kind', 'value', 'min_subtotal', 'starts_at', 'ends_at', 'max_uses', 'active', 'note'];
 
 export const orderFromRow = (r) => ({
@@ -119,6 +144,7 @@ export const categoryFromRow = (r) => ({
   hsn: r.hsn || '4202',
   gstRate: r.gst_rate != null ? Number(r.gst_rate) : 18,
   package: r.package || { weight: 0.5, length: 30, breadth: 10, height: 25 },
+  declarations: r.declarations || {},
 });
 
 export const contentFromRow = (r) => ({ ...r.published, publishedAt: r.published_at ? Date.parse(r.published_at) : null });
@@ -177,12 +203,13 @@ export function diff(prev, next) {
     if (c.hsn !== undefined && old.hsn !== c.hsn) values.hsn = c.hsn;
     if (c.gstRate !== undefined && old.gstRate !== c.gstRate) values.gst_rate = c.gstRate;
     if (c.package !== undefined && !same(old.package, c.package)) values.package = c.package;
+    if (c.declarations !== undefined && !same(old.declarations, c.declarations)) values.declarations = c.declarations;
     if (Object.keys(values).length) ops.push({ table: 'categories', type: 'update', id: c.id, values });
   }
 
   const sv = {};
   for (const [k, col] of Object.entries(SETTINGS_COLUMNS)) {
-    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k] === '' && NULLABLE.has(col) ? null : next.settings[k];
+    if (next.settings[k] !== undefined && !same(prev.settings[k], next.settings[k])) sv[col] = next.settings[k] === '' && NULLABLE.has(col) ? null : next.settings[k];
   }
   if (Object.keys(sv).length) ops.push({ table: 'settings', type: 'update', id: 1, values: sv });
 

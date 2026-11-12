@@ -26,6 +26,7 @@ function build(cat) {
     stock: Math.max(0, Number(p.stock) || 0),
     img: resolveImage(p.image),
     description: p.description || '',
+    mrp: Math.max(Number(p.mrp) || 0, Number(p.price) || 0),
   }));
   return {
     id: cat.id,
@@ -37,6 +38,7 @@ function build(cat) {
     blurb: colours[0].description,
     description: info?.description || colours[0].description,
     details: info?.details || {},
+    declarations: { generic_name: cat.unit, net_quantity: '1 N (one bag)', country_of_origin: 'India', ...(info?.declarations || {}) },
   };
 }
 

@@ -29,6 +29,12 @@ export const SAMPLES = {
   return_approved: { ...order, return_items: [order.lines[0]], admin_note: 'Sorry about that. A courier will collect it on Monday.' },
   return_rejected: { ...order, return_items: [order.lines[0]], admin_note: 'The return window had closed.' },
   admin_return: { ...order, return_items: [order.lines[0]], reason: 'damaged', details: 'Strap came loose' },
+  ticket_received: { number: 'VRT-T-1001', name: 'Ravi Shah', email: 'r@e.com', phone: '', order_id: 'VRT-10501', category: 'delivery', message: 'My parcel says delivered but it has not arrived.', status: 'open' },
+  ticket_reply: { number: 'VRT-T-1001', name: 'Ravi Shah', message: 'My parcel says delivered.', reply: 'Sorry! It is with your security desk.', status: 'closed' },
+  admin_ticket: { number: 'VRT-T-1001', name: 'Ravi Shah', email: 'r@e.com', phone: '+919876543210', order_id: '', category: 'delivery', message: 'Parcel missing.' },
+  privacy_received: { kind: 'delete', id: 3 },
+  privacy_done: { kind: 'delete', id: 3, note: 'Account deleted.' },
+  admin_privacy: { kind: 'export', email: 'r@e.com', id: 3 },
   admin_low_stock: { sku: 'VRT-LP-COB', name: 'Laptop Bag', colour: 'Cobalt', stock: 3, threshold: 5 },
 };
 

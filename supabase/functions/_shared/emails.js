@@ -159,6 +159,62 @@ const T = {
       text: `Return requested: ${o.order_id} (${why})\n${o.details || ''}\n\n${textLines(o.return_items)}\n\n${cfg.siteUrl}/admin/#/returns`,
     };
   },
+  ticket_received(t, cfg) {
+    return {
+      subject: `We’ve received your message (${t.number})`,
+      preheader: 'A person will reply soon.',
+      body: `${h1('We’ve got your message.')}${p(`Thanks${first(t.name) ? `, ${esc(first(t.name))}` : ''}. Your reference is <strong style="color:${C.ink}">${esc(t.number)}</strong>. A person will reply as soon as possible, and we resolve every complaint within a month at the latest.`)}
+        ${label('What you sent us')}<p style="margin:0 0 20px;padding:14px 16px;background:${C.paper};font-family:${SANS};font-size:14px;line-height:1.6;color:${C.ink};white-space:pre-wrap">${esc(t.message)}</p>
+        ${t.order_id ? small(`Order: ${esc(t.order_id)}`) : ''}${small('To add anything, just reply to this email and keep the reference in the subject.')}`,
+      text: `We've got your message. Reference ${t.number}.\n\nWhat you sent us:\n${t.message}\n\nWe resolve every complaint within a month at the latest. Reply to this email to add anything.`,
+    };
+  },
+  ticket_reply(t, cfg) {
+    return {
+      subject: `Re: your message (${t.number})`,
+      preheader: String(t.reply || '').slice(0, 90),
+      body: `${h1(`Hello${first(t.name) ? ` ${esc(first(t.name))}` : ''},`)}<p style="margin:0 0 20px;font-family:${SANS};font-size:16px;line-height:1.6;color:${C.ink};white-space:pre-wrap">${esc(t.reply)}</p>
+        ${small(t.status === 'closed' ? 'We’ve marked this as resolved. If it isn’t, just reply and we’ll reopen it.' : 'Reply to this email if you have anything to add.')}
+        ${label('Your original message')}${small(esc(t.message))}`,
+      text: `${t.reply}\n\n(${t.number})${t.status === 'closed' ? ' We have marked this as resolved; reply if it is not.' : ''}\n\nYour original message:\n${t.message}`,
+    };
+  },
+  admin_ticket(t, cfg) {
+    return {
+      subject: `New ${t.category} ticket ${t.number} from ${t.name}`,
+      preheader: String(t.message || '').slice(0, 90),
+      body: `${h1(`Ticket ${esc(t.number)}`)}${p(`${esc(t.name)} &lt;${esc(t.email)}&gt;${t.phone ? `, ${esc(t.phone)}` : ''}${t.order_id ? `, order ${esc(t.order_id)}` : ''}. Category: ${esc(t.category)}.`)}
+        <p style="margin:0 0 20px;padding:14px 16px;background:${C.paper};font-family:${SANS};font-size:14px;line-height:1.6;color:${C.ink};white-space:pre-wrap">${esc(t.message)}</p>
+        ${small('Acknowledged automatically. The rules require it to be resolved within a month.')}${button(`${cfg.siteUrl}/admin/#/support`, 'Open the support inbox')}`,
+      text: `Ticket ${t.number} from ${t.name} <${t.email}> (${t.category})\n\n${t.message}\n\n${cfg.siteUrl}/admin/#/support`,
+    };
+  },
+  privacy_received(x, cfg) {
+    const what = x.kind === 'delete' ? 'delete your account and personal details' : 'send you a copy of the personal data we hold about you';
+    return {
+      subject: 'We’ve received your privacy request',
+      preheader: 'We’ll act on it and confirm by email.',
+      body: `${h1('Request received.')}${p(`You asked us to ${what}. We’ll do this and confirm by email, usually within a few days.`)}${small('If you didn’t ask for this, reply to this email straight away.')}`,
+      text: `Request received. You asked us to ${what}. We'll confirm by email. If you didn't ask for this, reply straight away.`,
+    };
+  },
+  privacy_done(x, cfg) {
+    return {
+      subject: x.kind === 'delete' ? 'Your account has been deleted' : 'Your data request is complete',
+      preheader: 'Your request is complete.',
+      body: `${h1(x.kind === 'delete' ? 'Done.' : 'Your request is complete.')}${p(esc(x.note || (x.kind === 'delete' ? 'Your account and personal details have been deleted.' : 'We’ve sent you a copy of your data.')))}
+        ${x.kind === 'delete' ? small('Order and invoice records are kept for as long as tax law requires, but they are no longer linked to an account.') : ''}`,
+      text: `${x.note || 'Your request is complete.'}`,
+    };
+  },
+  admin_privacy(x, cfg) {
+    return {
+      subject: `Privacy request: ${x.kind} for ${x.email}`,
+      preheader: 'Act on it in the store manager.',
+      body: `${h1('A privacy request came in.')}${p(`${esc(x.email)} asked to <strong style="color:${C.ink}">${x.kind === 'delete' ? 'delete their account' : 'get a copy of their data'}</strong>.`)}${button(`${cfg.siteUrl}/admin/#/support`, 'Handle it')}`,
+      text: `Privacy request: ${x.kind} for ${x.email}\n${cfg.siteUrl}/admin/#/support`,
+    };
+  },
   order_delivered(o, cfg) {
     return {
       subject: `Delivered: order ${o.order_id}`,

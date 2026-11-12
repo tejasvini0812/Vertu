@@ -3,6 +3,7 @@ import { session, signOut } from './auth.js';
 import { esc, $, toast, confirmDialog, enter, listen } from './ui.js';
 import { MAIL_LABEL, MAIL_STATUS } from './orders.js';
 import { INDIAN_STATES as STATES } from '../delivery.js';
+import { checklist, DARK_PATTERNS } from './compliance.js';
 
 const ENTITY = { products: 'Product', orders: 'Order', site_content: 'Editorial', settings: 'Settings', admin_users: 'Team', coupons: 'Discount', categories: 'Collection' };
 const when = (t) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -93,6 +94,52 @@ export async function renderSettings(root) {
           <label class="switch"><input type="checkbox" id="b-reg" ${s.settings.gstRegistered ? 'checked' : ''} ${owner ? '' : 'disabled'}><i></i>Registered under GST</label>
           <div class="field" style="max-width:320px"><label for="b-gstin">GSTIN</label><input id="b-gstin" class="input" maxlength="15" value="${esc(s.settings.gstin)}" style="text-transform:uppercase" placeholder="27ABCDE1234F1Z5" ${owner ? '' : 'disabled'} /></div>
           ${owner ? '<div><button class="btn btn--ink" type="submit">Save business details</button></div>' : ''}
+        </form>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="s-legal">
+      <div class="block__intro"><h2 id="s-legal">Legal and customer care</h2><p>Shown on the contact page, in every footer and in the policies. The E-Commerce Rules require these details, including a grievance officer.</p></div>
+      <div class="block__form">
+        <form data-legal-form novalidate style="display:grid;gap:18px">
+          <div class="field"><label for="l-reg">Registered office address</label><input id="l-reg" class="input" maxlength="300" value="${esc(s.settings.registeredAddress)}" placeholder="If different from the business address above" ${owner ? '' : 'disabled'} /></div>
+          <div class="row2">
+            <div class="field"><label for="l-cemail">Customer care email</label><input id="l-cemail" class="input" type="email" value="${esc(s.settings.careEmail)}" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="l-cphone">Customer care phone (+91)</label><input id="l-cphone" class="input" inputmode="numeric" maxlength="10" value="${esc((s.settings.carePhone || '').replace(/^\+91/, ''))}" ${owner ? '' : 'disabled'} /></div>
+          </div>
+          <div class="field" style="max-width:420px"><label for="l-hours">Customer care hours</label><input id="l-hours" class="input" maxlength="80" value="${esc(s.settings.careHours)}" ${owner ? '' : 'disabled'} /></div>
+          <div class="row2">
+            <div class="field"><label for="l-gname">Grievance officer</label><input id="l-gname" class="input" maxlength="80" value="${esc(s.settings.grievanceName)}" placeholder="Full name" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="l-gtitle">Their title</label><input id="l-gtitle" class="input" maxlength="80" value="${esc(s.settings.grievanceTitle)}" ${owner ? '' : 'disabled'} /></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="l-gemail">Grievance email</label><input id="l-gemail" class="input" type="email" value="${esc(s.settings.grievanceEmail)}" ${owner ? '' : 'disabled'} /><small>Complaint alerts go here.</small></div>
+            <div class="field"><label for="l-gphone">Grievance phone (+91)</label><input id="l-gphone" class="input" inputmode="numeric" maxlength="10" value="${esc((s.settings.grievancePhone || '').replace(/^\+91/, ''))}" ${owner ? '' : 'disabled'} /></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="l-dispatch">Dispatch within (working days)</label><input id="l-dispatch" class="input" type="number" min="0" max="15" value="${s.settings.dispatchDays}" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="l-rfee">Return pickup charge (₹)</label><input id="l-rfee" class="input" type="number" min="0" value="${s.settings.returnShippingFee}" ${owner ? '' : 'disabled'} /><small>0 = free. Never charged for damaged or wrong items.</small></div>
+          </div>
+          <div class="field" style="max-width:260px"><label for="l-updated">Policies last reviewed</label><input id="l-updated" class="input" type="date" value="${esc(s.settings.policiesUpdatedAt || '')}" ${owner ? '' : 'disabled'} /><small>Set this once a lawyer has reviewed them; it shows on each policy.</small></div>
+          ${owner ? '<div><button class="btn btn--ink" type="submit">Save legal details</button></div>' : ''}
+        </form>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="s-check">
+      <div class="block__intro"><h2 id="s-check">Compliance checklist</h2><p>What the E-Commerce and Legal Metrology rules ask the store to show, checked against your settings. A guide, not legal advice.</p></div>
+      <div class="block__form"><ul class="checklist">${checklist(s.settings, s.categories || [], s.products)
+        .map(([label, ok, hint]) => `<li><span class="${ok ? 'ok' : 'no'}" aria-label="${ok ? 'Done' : 'To do'}">${ok ? '✓' : '○'}</span><span>${esc(label)}<small>${esc(hint)}</small></span></li>`)
+        .join('')}</ul></div>
+    </section>
+
+    <section class="block" aria-labelledby="s-dark">
+      <div class="block__intro"><h2 id="s-dark">Dark patterns self-audit</h2><p>From January 2027 the rules ask for a yearly self-audit against the 2023 Dark Patterns Guidelines, with a declaration shown on the site. Review each item; recording the audit adds the declaration to the contact page.</p>
+        ${s.settings.darkPatternsAudit?.date ? `<p><strong>Last recorded:</strong> ${esc(new Date(s.settings.darkPatternsAudit.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }))}${s.settings.darkPatternsAudit.by ? ` by ${esc(s.settings.darkPatternsAudit.by)}` : ''}</p>` : ''}</div>
+      <div class="block__form">
+        <form data-dark-form novalidate style="display:grid;gap:10px">
+          ${DARK_PATTERNS.map(([k, name, how]) => `<label class="check"><input type="checkbox" data-dp="${k}" ${owner ? '' : 'disabled'} /><span><strong>${esc(name)}</strong><br><span class="muted" style="font-size:.875rem">${esc(how)}</span></span></label>`).join('')}
+          ${owner ? '<div style="margin-top:8px"><button class="btn btn--ink" type="submit">Record self-audit</button></div>' : ''}
         </form>
       </div>
     </section>
@@ -188,6 +235,42 @@ export async function renderSettings(root) {
         businessPhone: phone ? '+91' + phone : '', invoicePrefix: prefix, gstRegistered: $('#b-reg', root).checked, gstin,
       })).then(() => LIVE && toast('Business details saved'), () => {});
       if (!LIVE) toast('Business details saved');
+    } catch (err) {
+      toast(describeError(err));
+    }
+  });
+
+  $('[data-legal-form]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const val = (id) => $(id, root).value.trim();
+    const ph = (id) => val(id).replace(/\D/g, '');
+    const okEmail = (v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+    if (!okEmail(val('#l-cemail')) || !okEmail(val('#l-gemail'))) return toast('Check the email addresses.');
+    if ([ph('#l-cphone'), ph('#l-gphone')].some((p) => p && !/^[0-9]{10}$/.test(p))) return toast('Phone numbers: 10 digits.');
+    try {
+      update((st) => Object.assign(st.settings, {
+        registeredAddress: val('#l-reg'), careEmail: val('#l-cemail'), carePhone: ph('#l-cphone') ? '+91' + ph('#l-cphone') : '',
+        careHours: val('#l-hours') || 'Monday to Saturday, 10am to 6pm', grievanceName: val('#l-gname'), grievanceTitle: val('#l-gtitle') || 'Grievance Officer',
+        grievanceEmail: val('#l-gemail'), grievancePhone: ph('#l-gphone') ? '+91' + ph('#l-gphone') : '',
+        dispatchDays: Math.max(0, Math.min(15, Math.round(Number(val('#l-dispatch')) || 0))), returnShippingFee: Math.max(0, Math.round(Number(val('#l-rfee')) || 0)),
+        policiesUpdatedAt: val('#l-updated'),
+      })).then(() => LIVE && toast('Legal details saved'), () => {});
+      if (!LIVE) toast('Legal details saved');
+      setTimeout(() => renderSettings(root), 300);
+    } catch (err) {
+      toast(describeError(err));
+    }
+  });
+
+  $('[data-dark-form]', root)?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const checks = Object.fromEntries([...root.querySelectorAll('[data-dp]')].map((c) => [c.dataset.dp, c.checked]));
+    const missing = DARK_PATTERNS.filter(([k]) => !checks[k]).map(([, n]) => n);
+    if (missing.length) return toast(`Review every item first. Still to tick: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}`);
+    try {
+      update((st) => (st.settings.darkPatternsAudit = { date: new Date().toISOString().slice(0, 10), by: session.email || 'owner', checks })).then(() => LIVE && toast('Self-audit recorded'), () => {});
+      if (!LIVE) toast('Self-audit recorded');
+      setTimeout(() => renderSettings(root), 300);
     } catch (err) {
       toast(describeError(err));
     }

@@ -2,6 +2,8 @@ import { CONTENT } from './data.js';
 import { initCartUI } from './cart.js';
 import { customer, accountsEnabled } from './customer.js';
 import { newsletterForm, bindNewsletterForms } from './newsletter.js';
+import { legalLinks, fillEntity } from './legal/footer.js';
+import { initConsent } from './consent.js';
 
 /**
  * Header, announcement bar, footer, bag drawer and toast for the sub-pages (shop, product, account).
@@ -38,10 +40,11 @@ export function mountChrome({ current = '' } = {}) {
       <div class="footer__top"><span class="footer__logo" role="img" aria-label="VERTU"></span>
         <p class="footer__line">A utility-first bag brand designed for modern everyday life.</p>${newsletterForm()}</div>
       <div class="footer__cols">
-        <nav aria-label="Footer"><a href="${base}shop/">Shop</a><a href="${base}#collections">Collections</a><a href="${base}account/">Account</a></nav>
+        <nav aria-label="Footer"><a href="${base}shop/">Shop</a><a href="${base}#collections">Collections</a><a href="${base}account/">Account</a><a href="${base}contact/">Contact</a></nav>
         <div><a href="mailto:contact.shopvertu@gmail.com">contact.shopvertu@gmail.com</a><a href="https://instagram.com/shopvertu" rel="noopener">@shopvertu</a></div>
         <p class="footer__fine">&copy; ${new Date().getFullYear()} VERTU</p>
       </div>
+      ${legalLinks(base)}
     </footer>
     <aside class="cart" id="cart" role="dialog" aria-modal="true" aria-labelledby="cart-title">
       <div class="cart__scrim" data-cart-close></div>
@@ -60,6 +63,8 @@ export function mountChrome({ current = '' } = {}) {
   const drawer = initCartUI({ base });
   bindAccountLink();
   bindNewsletterForms();
+  fillEntity();
+  initConsent();
   return { drawer, base };
 }
 

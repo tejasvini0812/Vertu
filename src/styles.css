@@ -1374,3 +1374,27 @@ main > section > *,
   font-size: 0.875rem;
   color: var(--ink-2);
 }
+
+/* footer policy links and seller disclosure (every page) */
+.footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--stone);
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+.footer__legal a:hover {
+  color: var(--ink);
+}
+.footer__entity {
+  margin-top: 10px;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  max-width: 90ch;
+}
+.footer__entity:empty {
+  display: none;
+}

@@ -205,6 +205,7 @@ function openForm(id) {
         <div class="field"><label for="f-price">Price (₹)</label><input id="f-price" class="input" type="number" min="0" step="1" value="${draft.price}" /><span class="err" data-err="price" role="alert"></span></div>
         <div class="field"><label for="f-stock">Stock</label><input id="f-stock" class="input" type="number" min="0" step="1" value="${draft.stock}" /><span class="err" data-err="stock" role="alert"></span></div>
       </div>
+      <div class="field" style="max-width:50%"><label for="f-mrp">MRP (₹, incl. of all taxes)</label><input id="f-mrp" class="input" type="number" min="1" step="1" value="${draft.mrp ?? ''}" placeholder="Same as price" /><small>Printed on the label. The price can’t be higher.</small><span class="err" data-err="mrp" role="alert"></span></div>
       <div class="field"><label for="f-desc">Description</label><textarea id="f-desc" class="textarea">${esc(draft.description)}</textarea><small>Shown in the store when this colour is selected.</small></div>
       <label class="switch"><input id="f-active" type="checkbox" ${draft.status === 'active' ? 'checked' : ''}><i></i>Show in the store</label>
     </form>
@@ -240,6 +241,7 @@ function openForm(id) {
       colour: !colour ? 'Give this colour a name.' : '',
       price: !(price >= 0) || $('#f-price', d).value === '' ? 'Enter a price of 0 or more.' : '',
       stock: !(stock >= 0) || $('#f-stock', d).value === '' ? 'Enter a stock count of 0 or more.' : '',
+      mrp: $('#f-mrp', d).value !== '' && Number($('#f-mrp', d).value) < price ? 'The MRP can’t be lower than the price.' : '',
     };
     Object.entries(errs).forEach(([k, m]) => {
       $(`[data-err=${k}]`, d).textContent = m;
@@ -255,6 +257,7 @@ function openForm(id) {
       description: $('#f-desc', d).value.trim(),
       status: $('#f-active', d).checked ? 'active' : 'draft',
       image: draft.image,
+      mrp: $('#f-mrp', d).value === '' ? null : Math.round(Number($('#f-mrp', d).value)),
     };
     let newId = null;
     const ok = safeSave((s) => {
@@ -316,6 +319,12 @@ function openDetails(catId) {
           .join('')}</div>
         <button type="button" class="text-btn" data-add-spec style="justify-self:start">Add a row</button></div>
       <div class="field"><label for="d-care">Care</label><textarea id="d-care" class="textarea" style="min-height:84px" maxlength="600">${esc(d.care || '')}</textarea></div>
+      <div class="field"><span class="label">Listing declarations (Legal Metrology)</span><small>Shown under “Product information” on the product page.</small>
+        <div class="row2"><div class="field"><label for="dc-generic">Generic name</label><input id="dc-generic" class="input" maxlength="60" value="${esc(cat.declarations?.generic_name || cat.unit)}" /></div>
+          <div class="field"><label for="dc-qty">Net quantity</label><input id="dc-qty" class="input" maxlength="40" value="${esc(cat.declarations?.net_quantity || '1 N (one bag)')}" /></div></div>
+        <div class="row2"><div class="field"><label for="dc-origin">Country of origin</label><input id="dc-origin" class="input" maxlength="40" value="${esc(cat.declarations?.country_of_origin || 'India')}" /></div>
+          <div class="field"><label for="dc-made">Month and year of manufacture</label><input id="dc-made" class="input" maxlength="40" value="${esc(cat.declarations?.made_on || '')}" placeholder="e.g. October 2026" /><small>Update with each batch.</small></div></div>
+        <div class="field"><label for="dc-maker">Manufactured or packed by (name and address)</label><input id="dc-maker" class="input" maxlength="200" value="${esc(cat.declarations?.maker || '')}" /><small>If imported, the importer’s name and address.</small></div></div>
       <div class="row2">
         <div class="field"><label for="d-hsn">HSN code</label><input id="d-hsn" class="input" inputmode="numeric" maxlength="8" value="${esc(cat.hsn || '4202')}" /><small>For invoices. Confirm with your accountant.</small></div>
         <div class="field"><label for="d-gst">GST rate (%)</label><input id="d-gst" class="input" type="number" min="0" max="28" step="0.01" value="${cat.gstRate ?? 18}" /></div>
@@ -361,6 +370,10 @@ function openDetails(catId) {
         c.hsn = hsn;
         c.gstRate = gst;
         c.package = pk;
+        c.declarations = {
+          generic_name: $('#dc-generic', dr).value.trim(), net_quantity: $('#dc-qty', dr).value.trim(), country_of_origin: $('#dc-origin', dr).value.trim(),
+          made_on: $('#dc-made', dr).value.trim(), maker: $('#dc-maker', dr).value.trim(),
+        };
       }, `${cat.name} details saved`)
     )
       closeDrawer();

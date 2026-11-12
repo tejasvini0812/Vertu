@@ -462,5 +462,54 @@ await expect('return window closes', async () => {
 await expect('order page shows tracking, invoice and return deadline', async () => as(null, null, `select order_lookup($1, $2) r`, [i1.order_id, await tokenOf(i1.order_id)]), (r) => {
   const o = r.rows[0].r; return o.events.length === 5 && /^VRT\//.test(o.invoice) && o.return_until && o.courier === 'Delhivery Surface';
 });
+
+// ---------------------------------------------------------------- Phase 6: compliance
+await db.exec(`update settings set grievance_name = 'Veda Shah', grievance_email = 'grievance@vertu.test', grievance_phone = '+919769245614',
+  care_email = 'care@vertu.test', care_phone = '+919769245614', registered_address = '12 Studio Lane, Bandra, Mumbai 400050'`);
+await expect('legal details are public, internal settings are not', () => as(null, null, `select legal_info() r`), (r) => {
+  const x = r.rows[0].r; return x.grievance_name === 'Veda Shah' && x.registered_address.startsWith('12') && !('notify_email' in x) && !('pickup_pin' in x);
+});
+await expect('collections carry listing declarations', () => db.query(`select declarations from categories where id='laptop'`), (r) => r.rows[0].declarations.country_of_origin === 'India' && r.rows[0].declarations.generic_name === 'Laptop Bag');
+await expect('price cannot exceed MRP', () => as(STAFF, 'aal2', `update products set mrp = 100 where id='VRT-LP-CRI'`), errored('check'));
+await expect('MRP at or above price is fine', () => as(STAFF, 'aal2', `update products set mrp = 2999 where id='VRT-LP-CRI' returning mrp`), rows(1));
+await db.exec(`delete from email_outbox`);
+let tk;
+await expect('anyone can raise a ticket and gets a number', async () => { tk = (await as(null, null, `select open_ticket('Ravi Shah', 'Ravi@Example.com', '98765 43210', 'vrt-10501', 'delivery', 'My parcel says delivered but I have not received it.') r`)).rows[0].r; return { rows: [tk] }; }, (r) => r.rows[0].ok && /^VRT-T-\d+$/.test(r.rows[0].number));
+await expect('acknowledgement with a copy goes out at once; grievance officer alerted', async () => ({ rows: await outbox(`true`) }), (r) => {
+  const ack = r.rows.find((x) => x.kind === 'ticket_received'); const adm = r.rows.find((x) => x.kind === 'admin_ticket');
+  return ack?.to_email === 'ravi@example.com' && ack.payload.message.includes('not received') && ack.payload.number === tk.number && adm?.to_email === 'grievance@vertu.test';
+});
+await expect('ticket due within a month, phone normalised', () => db.query(`select due_at - created_at as d, phone, order_id from support_tickets where number=$1`, [tk.number]), (r) => String(r.rows[0].d?.days ?? r.rows[0].d).startsWith('30') && r.rows[0].phone === '+919876543210' && r.rows[0].order_id === 'VRT-10501');
+await expect('too-short messages refused', () => as(null, null, `select open_ticket('A', 'a@b.co', '', null, 'other', 'hi') r`), (r) => r.rows[0].r.error === 'too_short');
+await expect('five tickets a day per email', async () => {
+  for (const n of ['one', 'two', 'three', 'four', 'five']) await as(null, null, `select open_ticket('A', 'spam@example.com', '', null, 'other', 'Message number ${n} here')`);
+  return as(null, null, `select open_ticket('A', 'SPAM@example.com', '', null, 'other', 'Sixth message here') r`);
+}, (r) => r.rows[0].r.error === 'too_many');
+await expect('tickets are private', () => as(OTHER, 'aal1', `select * from support_tickets`), rows(0));
+await expect('staff see tickets', () => as(STAFF, 'aal2', `select * from support_tickets where number=$1`, [tk.number]), rows(1));
+await expect('shoppers cannot reply', () => as(OTHER, 'aal1', `select reply_ticket(1, 'x', 'closed')`), errored('not_allowed'));
+await expect('staff reply is emailed and closing records the time', async () => {
+  const id = (await one(`select id from support_tickets where number=$1`, [tk.number])).id;
+  await as(STAFF, 'aal2', `select reply_ticket(${id}, 'Sorry! The courier left it with your security desk. We have called them.', 'closed')`);
+  return { rows: [await one(`select status, resolved_at, last_reply from support_tickets where id=${id}`), (await outbox(`kind='ticket_reply'`))[0]] };
+}, (r) => r.rows[0].status === 'closed' && r.rows[0].resolved_at && r.rows[1]?.payload.reply.startsWith('Sorry'));
+
+const NEW = '00000000-0000-0000-0000-00000000000e';
+await db.exec(`insert into auth.users (id, email) values ('${NEW}', 'leaving@example.com')`);
+await as(NEW, 'aal1', `insert into addresses (full_name, phone, line1, city, state, pin) values ('Leaving', '+919811100000', '1 Road', 'Pune', 'Maharashtra', '411001')`);
+await as(NEW, 'aal1', `update profiles set marketing_opt_in = true where id='${NEW}'`);
+await db.query(`update orders set customer_id=$1 where id=$2`, [NEW, i2.order_id]);
+let dr;
+await expect('a privacy request is acknowledged and the owner alerted', async () => { dr = (await as(NEW, 'aal1', `insert into data_requests (email, kind) values ('leaving@example.com', 'delete') returning id`)).rows[0].id; return { rows: (await outbox(`dedupe_key like 'privacy_received:${dr}' or dedupe_key like 'admin_privacy:${dr}'`)).map((x) => x.kind) }; }, (r) => r.rows.sort().join() === 'admin_privacy,privacy_received');
+await expect('export gathers everything held about the person', () => svc(`select personal_data_export($1) r`, [NEW]), (r) => { const x = r.rows[0].r; return x.account.email === 'leaving@example.com' && x.addresses.length === 1 && x.orders.some((o) => o.id === i2.order_id) && x.newsletter.status === 'subscribed'; });
+await expect('browsers cannot export or erase', () => as(OWNER, 'aal2', `select personal_data_export('${NEW}')`), errored('permission'));
+await expect('erasure removes account data but keeps tax records detached', async () => {
+  await svc(`select personal_data_erase($1)`, [NEW]);
+  return { rows: [await one(`select (select count(*) from addresses where user_id='${NEW}')::int a, (select count(*) from profiles where id='${NEW}')::int p,
+    (select count(*) from newsletter_subscribers where email='leaving@example.com')::int n, (select customer_id from orders where id='${i2.order_id}') c,
+    (select count(*) from invoices where order_id='${i2.order_id}')::int i`)] };
+}, (r) => r.rows[0].a === 0 && r.rows[0].p === 0 && r.rows[0].n === 0 && r.rows[0].c === null && r.rows[0].i === 1);
+await expect('staff cannot close privacy requests', () => as(STAFF, 'aal2', `select resolve_data_request(${dr}, 'done')`), errored('not_allowed'));
+await expect('owner closes it and the person is told', async () => { await as(OWNER, 'aal2', `select resolve_data_request(${dr}, 'Account and personal details deleted. Order records kept for tax law.')`); return { rows: await outbox(`kind='privacy_done'`) }; }, (r) => r.rows.length === 1 && r.rows[0].to_email === 'leaving@example.com');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
