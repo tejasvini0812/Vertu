@@ -27,7 +27,7 @@ npm run build:single   # one self-contained index.html -> dist-single/
 
 ## Admin portal (`/admin/`)
 
-Open `/admin/` (built from `admin/index.html`, code in `src/admin/`). Views: Overview, Products, Orders, Editorial, Settings.
+Open `/admin/` (built from `admin/index.html`, code in `src/admin/`). Views: Overview, Products, Orders, Returns, Support, Editorial, Discounts, System health, Settings.
 
 The site runs in one of two modes:
 
