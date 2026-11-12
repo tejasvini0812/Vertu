@@ -258,7 +258,7 @@ Set these in the host's environment variables:
 - `SITE_URL=https://yourdomain.com`
 - optionally the analytics pair below
 
-On other hosts (Vercel, nginx), copy the headers from `dist/_headers` into that host's configuration. Without them the site works but loses its security headers.
+**Vercel** reads `vercel.json`, which sets the same headers. Its security policy allows any `*.supabase.co` project and both analytics providers, so it's slightly broader than the generated one. Vercel's own production address is used for the sitemap if `SITE_URL` isn't set. On other hosts (nginx and so on), copy the headers from `dist/_headers`.
 
 ### Security
 

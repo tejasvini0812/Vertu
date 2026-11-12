@@ -119,7 +119,7 @@ export function sitePlugin(env) {
     },
     async writeBundle(_, bundle) {
       const log = (m) => this.warn ? this.warn(m) : console.warn(m);
-      const SITE = (env.SITE_URL || env.URL || '').replace(/\/$/, '');
+      const SITE = (env.SITE_URL || env.URL || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '')).replace(/\/$/, '');
       const file = (p) => join(outDir, p);
       const read = (p) => readFileSync(file(p), 'utf8');
       const write = (p, s) => (mkdirSync(dirname(file(p)), { recursive: true }), writeFileSync(file(p), s));
