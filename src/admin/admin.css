@@ -1645,3 +1645,40 @@ code {
   padding: 20px;
   background: color-mix(in srgb, var(--paper-2) 60%, transparent);
 }
+.shipment {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--stone);
+}
+.row-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.row-btns .btn {
+  height: 40px;
+  padding: 0 16px;
+  font-size: 0.875rem;
+}
+.rates {
+  display: grid;
+  gap: 8px;
+}
+.rate {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--stone);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.rate:has(input:checked) {
+  border-color: var(--ink);
+  background: #fbfaf7;
+}
+.rate input {
+  accent-color: var(--accent);
+}

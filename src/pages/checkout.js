@@ -7,7 +7,7 @@ import { customer, customerReady, accountsEnabled } from '../customer.js';
 import { LIVE, supabase, callFunction } from '../lib/supabase.js';
 import { getState, update } from '../store.js';
 import { priceCart, COUPON_REASON } from '../lib/pricing.js';
-import { INDIAN_STATES, validPin, estimate } from '../delivery.js';
+import { INDIAN_STATES, validPin, liveEstimate } from '../delivery.js';
 import { esc, $, $$ } from './ui.js';
 
 mountChrome({ current: 'checkout' });
@@ -155,10 +155,26 @@ function currentAddress() {
   return { full_name: v('full_name'), line1: v('line1'), line2: v('line2'), city: v('city'), state: f.state.value, pin: v('pin') };
 }
 
+let pinCheck = { pin: '', serviceable: true, cod: true };
+let etaTimer;
 function eta() {
-  const pin = currentAddress()?.pin || '';
-  const e = validPin(pin) ? estimate(pin) : null;
-  $('[data-eta]', main).innerHTML = e ? `Estimated delivery: <strong>${e.label}</strong>` : '';
+  clearTimeout(etaTimer);
+  etaTimer = setTimeout(async () => {
+    const pin = currentAddress()?.pin || '';
+    const box = $('[data-eta]', main);
+    if (!validPin(pin)) {
+      pinCheck = { pin: '', serviceable: true, cod: true };
+      box.innerHTML = '';
+      return quote && drawSummary();
+    }
+    const e = await liveEstimate(pin);
+    if ((currentAddress()?.pin || '') !== pin) return; // typed on meanwhile
+    pinCheck = { pin, serviceable: e.serviceable, cod: e.cod };
+    box.innerHTML = e.serviceable
+      ? `Estimated delivery: <strong>${e.label}</strong>${e.cod ? '' : '. Cash on delivery isn’t available for this PIN.'}`
+      : `<strong>We can’t deliver to ${esc(pin)} yet.</strong> Check the PIN code, or write to us and we’ll find a way.`;
+    if (quote) drawSummary();
+  }, 250);
 }
 
 async function getQuote() {
@@ -245,8 +261,15 @@ function drawSummary() {
     box.innerHTML = '<p>Cash on delivery isn’t available for this order. Please choose to pay online.</p>';
   } else if (!box.textContent.includes('changed') && !box.textContent.includes('removed')) box.hidden = true;
 
+  if (!pinCheck.serviceable) {
+    box.hidden = false;
+    box.innerHTML = `<p>We can’t deliver to PIN ${esc(pinCheck.pin)} yet. Please check it, or use another address.</p>`;
+  } else if (form.method === 'cod' && !pinCheck.cod) {
+    box.hidden = false;
+    box.innerHTML = '<p>Cash on delivery isn’t available for this PIN code. Please choose to pay online.</p>';
+  }
   const btn = $('[data-pay]', main);
-  btn.disabled = probs.length > 0 || paying;
+  btn.disabled = probs.length > 0 || paying || !pinCheck.serviceable || (form.method === 'cod' && !pinCheck.cod);
   btn.textContent = !LIVE ? `Place sample order · ${fmt(q.total)}` : form.method === 'cod' ? `Place order · ${fmt(q.total)}` : `Pay ${fmt(q.total)}`;
 }
 

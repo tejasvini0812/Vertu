@@ -37,3 +37,13 @@ content_path = "./supabase/templates/recovery.html"
 [auth.email.template.invite]
 subject = "You’re invited to the VERTU store manager"
 content_path = "./supabase/templates/invite.html"
+
+[functions.admin-shipping]
+verify_jwt = false
+
+[functions.delivery-estimate]
+verify_jwt = false
+
+# Shiprocket refuses webhook URLs containing "shiprocket"/"sr"/"kr", so the same code is deployed as "courier-updates".
+[functions.courier-updates]
+verify_jwt = false

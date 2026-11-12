@@ -27,6 +27,7 @@ export default defineConfig({
             checkout: resolve('checkout/index.html'),
             order: resolve('order/index.html'),
             newsletter: resolve('newsletter/index.html'),
+            invoice: resolve('invoice/index.html'),
             admin: resolve('admin/index.html'),
           },
     },

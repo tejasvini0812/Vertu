@@ -316,6 +316,16 @@ function openDetails(catId) {
           .join('')}</div>
         <button type="button" class="text-btn" data-add-spec style="justify-self:start">Add a row</button></div>
       <div class="field"><label for="d-care">Care</label><textarea id="d-care" class="textarea" style="min-height:84px" maxlength="600">${esc(d.care || '')}</textarea></div>
+      <div class="row2">
+        <div class="field"><label for="d-hsn">HSN code</label><input id="d-hsn" class="input" inputmode="numeric" maxlength="8" value="${esc(cat.hsn || '4202')}" /><small>For invoices. Confirm with your accountant.</small></div>
+        <div class="field"><label for="d-gst">GST rate (%)</label><input id="d-gst" class="input" type="number" min="0" max="28" step="0.01" value="${cat.gstRate ?? 18}" /></div>
+      </div>
+      <div class="field"><span class="label">Parcel for one bag</span><small>Weigh and measure one packed bag. Couriers charge on this.</small>
+        <div class="row2" style="grid-template-columns:repeat(4,1fr)">
+          ${[['weight', 'Weight (kg)', 0.05], ['length', 'Length (cm)', 1], ['breadth', 'Width (cm)', 1], ['height', 'Height (cm)', 1]]
+            .map(([k, l, st]) => `<div class="field"><label for="d-pk-${k}">${l}</label><input id="d-pk-${k}" class="input" type="number" min="${st}" step="${st}" value="${esc(cat.package?.[k] ?? '')}" /></div>`)
+            .join('')}
+        </div></div>
     </form>`;
   const foot = `<button class="btn btn--ghost" data-drawer-close type="button">Cancel</button><button class="btn btn--ink" type="submit" form="dform">Save details</button>`;
   openDrawer({ title: 'Collection details', sub: 'Shown on the product page for every colour in the collection', body, foot });
@@ -337,11 +347,20 @@ function openDetails(catId) {
       specs: specsOut,
       care: $('#d-care', dr).value.trim(),
     };
+    const hsn = $('#d-hsn', dr).value.trim();
+    const gst = Number($('#d-gst', dr).value);
+    const pk = Object.fromEntries(['weight', 'length', 'breadth', 'height'].map((k) => [k, Number($(`#d-pk-${k}`, dr).value)]));
+    if (!/^[0-9]{4,8}$/.test(hsn)) return toast('HSN code: 4 to 8 digits.');
+    if (!(gst >= 0 && gst <= 28)) return toast('GST rate: 0 to 28%.');
+    if (Object.values(pk).some((v) => !(v > 0))) return toast('Enter the parcel weight and size.');
     if (
       safeSave((st) => {
         const c = st.categories.find((x) => x.id === cat.id);
         c.description = $('#d-desc', dr).value.trim();
         c.details = details;
+        c.hsn = hsn;
+        c.gstRate = gst;
+        c.package = pk;
       }, `${cat.name} details saved`)
     )
       closeDrawer();

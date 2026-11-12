@@ -5,7 +5,7 @@ import { cart, toast } from '../cart.js';
 import { mountChrome } from '../chrome.js';
 import { customer, accountsEnabled } from '../customer.js';
 import { LIVE, supabase } from '../lib/supabase.js';
-import { estimate, validPin } from '../delivery.js';
+import { liveEstimate, validPin } from '../delivery.js';
 import { esc, $, $$, wishButton, bindWishButtons, tile } from './ui.js';
 
 const { drawer } = mountChrome();
@@ -212,11 +212,15 @@ function render() {
 
   const pinIn = $('#pin', main);
   const out = $('[data-deliver-out]', main);
-  const showEstimate = (pin) => {
-    const est = estimate(pin);
-    out.innerHTML = est
-      ? `Estimated delivery to <strong>${esc(pin)}</strong>: <strong>${est.label}</strong>. Confirmed at checkout.`
-      : 'Enter a 6-digit PIN code.';
+  const showEstimate = async (pin) => {
+    if (!validPin(pin)) return (out.innerHTML = 'Enter a 6-digit PIN code.');
+    out.textContent = 'Checking…';
+    const est = await liveEstimate(pin);
+    out.innerHTML = !est
+      ? 'Enter a 6-digit PIN code.'
+      : !est.serviceable
+        ? `We can’t deliver to <strong>${esc(pin)}</strong> yet. Write to us and we’ll find a way.`
+        : `Estimated delivery to <strong>${esc(pin)}</strong>: <strong>${est.label}</strong>.${est.cod ? '' : ' Online payment only for this PIN.'}`;
     if (est) {
       try {
         localStorage.setItem('vertu.pin', pin);

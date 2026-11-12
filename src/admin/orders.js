@@ -66,8 +66,9 @@ export function renderOrders(root, params) {
       <div class="tabs" role="tablist" aria-label="Order status">
         ${TABS.map((t) => `<button role="tab" data-f="${t}" aria-selected="${filter === t}">${t}<sup>${counts[t]}</sup></button>`).join('')}
       </div>
-      <div class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></span>
+      <div class="tools"><div class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></span>
         <input class="input" type="search" placeholder="Search name, email or order" aria-label="Search orders" value="${esc(q)}" data-q /></div>
+        <button class="btn btn--ghost" type="button" data-csv>Export CSV</button></div>
     </div>
     ${filter === 'Unpaid' ? '<p class="muted" style="margin:8px 0 4px">Checkouts that were never paid. Their stock is held for 15 minutes, then released automatically.</p>' : ''}
     <div class="table-wrap"><table>
@@ -90,6 +91,7 @@ export function renderOrders(root, params) {
   enter(root);
 
   const rerender = () => renderOrders(root, new URLSearchParams());
+  $('[data-csv]', root).addEventListener('click', () => exportCsv(rows, filter));
   $$('[data-f]', root).forEach((b) => b.addEventListener('click', () => ((filter = b.dataset.f), rerender())));
   const qi = $('[data-q]', root);
   qi.addEventListener('input', () => {
@@ -155,8 +157,9 @@ function openOrder(id, rerender) {
         ${o.razorpayPaymentId ? `<div class="kv"><dt>Razorpay payment</dt><dd><code>${esc(o.razorpayPaymentId)}</code></dd></div>` : ''}
         ${o.paidAt ? `<div class="kv"><dt>Paid</dt><dd>${fmtDateTime(o.paidAt)}</dd></div>` : ''}
       </dl></div>
+    ${shipmentSection(o)}
     ${
-      countsAsSale(o) && o.status !== 'Cancelled'
+      countsAsSale(o) && o.status !== 'Cancelled' && !(LIVE && o.awb)
         ? `<form class="track" data-track novalidate><p class="label" style="font-weight:500">Shipping details</p>
         <div class="row2"><div class="field"><label for="t-courier">Courier</label><input id="t-courier" class="input" maxlength="60" value="${esc(o.courier || '')}" placeholder="e.g. Delhivery" /></div>
         <div class="field"><label for="t-num">Tracking number</label><input id="t-num" class="input" maxlength="60" value="${esc(o.trackingNumber || '')}" /></div></div>
@@ -180,6 +183,10 @@ function openOrder(id, rerender) {
     }`;
   openDrawer({ title: o.id, sub: `Placed ${fmtDateTime(o.createdAt)}`, body, foot: '' });
   if (LIVE) loadMails(id, $('[data-mails]', drawerEl));
+  wireShipment(o, () => {
+    rerender();
+    openOrder(id, rerender);
+  });
 
   $('[data-track]', drawerEl)?.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -287,4 +294,140 @@ async function loadMails(id, ul) {
   ul.innerHTML = data.length
     ? data.map((m) => `<li><span>${esc(MAIL_LABEL[m.kind] || m.kind)}<br><span class="muted" style="font-size:.8125rem">${esc(m.to_email)}${m.last_error ? ` · ${esc(m.last_error)}` : ''}</span></span><span class="muted">${MAIL_STATUS[m.status] || m.status}, ${fmtDateTime(m.sent_at || m.created_at)}</span></li>`).join('')
     : '<li class="muted">No emails for this order yet.</li>';
+}
+
+// ---------------------------------------------------------------- shipping with Shiprocket
+const SHIPPABLE = (o) => countsAsSale(o) && !['Cancelled', 'Delivered'].includes(o.status);
+const SHIP_ERR = {
+  shiprocket_not_configured: 'Shiprocket isn’t connected yet. Add its login to the server (see README), or enter tracking by hand below.',
+  pickup_pin_missing: 'Add your pickup PIN code in Settings → Shipping and payment first.',
+  pickup_address_missing: 'Add your business address and pickup PIN in Settings first.',
+  not_shippable: 'This order can’t be shipped (unpaid, cancelled or delivered).',
+  already_booked: 'A courier is already booked for this order.',
+  already_shipped: 'The courier has already collected it, so the booking can’t be cancelled.',
+  staff_only: 'Only staff can do this.',
+  network: 'Could not reach the server.',
+};
+const shipErr = (b) => SHIP_ERR[b?.error] || b?.message || `Didn’t go through (${b?.error || 'error'}).`;
+
+function shipmentSection(o) {
+  if (!SHIPPABLE(o) && !o.awb) return '';
+  const invoiceBtn = `<button class="btn btn--ghost" type="button" data-invoice>Invoice</button>`;
+  if (!LIVE)
+    return `<div class="shipment"><p class="label" style="font-weight:500">Shipment</p><p class="muted">Couriers are booked through Shiprocket once the store is connected. In sample mode, enter tracking by hand below.</p></div>`;
+  if (o.awb)
+    return `<div class="shipment"><p class="label" style="font-weight:500">Shipment</p>
+      <dl style="margin:0"><div class="kv"><dt>Courier</dt><dd>${esc(o.courier)}, AWB <code>${esc(o.awb)}</code></dd></div>
+      <div class="kv"><dt>Latest</dt><dd>${esc((o.shipStatus || '').toLowerCase()) || 'booked'}${o.eta ? `, expected ${esc(new Date(o.eta).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }))}` : ''}</dd></div></dl>
+      <div class="row-btns">${o.labelUrl ? `<a class="btn btn--ink" href="${esc(o.labelUrl)}" target="_blank" rel="noopener">Print label</a>` : '<button class="btn btn--ghost" type="button" data-ship="label">Get label</button>'}
+        ${invoiceBtn}<button class="btn btn--ghost" type="button" data-ship="track">Refresh tracking</button>
+        ${['Pending', 'Processing'].includes(o.status) ? '<button class="btn btn--ghost" type="button" data-ship="cancel">Cancel shipment</button>' : ''}</div>
+      <ul class="history" data-events></ul><p class="err" data-ship-err role="alert"></p></div>`;
+  return `<div class="shipment"><p class="label" style="font-weight:500">Shipment</p>
+    <p class="muted">Compare couriers for this parcel, then book. Booking arranges pickup, prints the label and issues the invoice.</p>
+    <div class="row-btns"><button class="btn btn--ink" type="button" data-ship="rates">Choose a courier</button>${invoiceBtn}</div>
+    <div data-rates></div><p class="err" data-ship-err role="alert"></p></div>`;
+}
+
+function wireShipment(o, reopen) {
+  const d = drawerEl;
+  const err = $('[data-ship-err]', d);
+  const busy = (b, on, label) => {
+    if (!b) return;
+    b.disabled = on;
+    if (label) b.textContent = label;
+  };
+  const call = async (body, btn, label) => {
+    const before = btn?.textContent;
+    busy(btn, true, label);
+    if (err) err.textContent = '';
+    const r = await callFunction('admin-shipping', body);
+    busy(btn, false, before);
+    if (!r.ok && err) err.textContent = shipErr(r.body);
+    return r;
+  };
+  $('[data-invoice]', d)?.addEventListener('click', async () => {
+    if (!LIVE) return toast('Invoices are issued once the store is connected.');
+    // open the tab now (browsers block pop-ups opened after waiting on the network), fill it in when ready
+    const w = window.open('', '_blank');
+    if (w) w.opener = null;
+    const { data, error } = await supabase.rpc('create_invoice', { p_order: o.id });
+    if (error || !data?.ok) {
+      w?.close();
+      const m = { seller_details_missing: 'Add your business name in Settings → Business and invoices first.', not_invoiceable: 'Only paid or cash-on-delivery orders get invoices.' }[data?.error];
+      return toast(m || describeError(error || { message: data?.error }));
+    }
+    const url = new URL(`../invoice/?id=${encodeURIComponent(o.id)}&staff=1`, location.href).href;
+    if (w) w.location.href = url;
+    else location.href = url;
+  });
+  d.querySelectorAll('[data-ship]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const act = b.dataset.ship;
+      if (act === 'rates') {
+        const r = await call({ action: 'rates', order_id: o.id }, b, 'Checking couriers…');
+        if (!r.ok) return;
+        const box = $('[data-rates]', d);
+        const list = r.body.couriers || [];
+        if (!list.length) return (box.innerHTML = `<p class="err">No courier delivers to ${esc(o.customer.pin)}${o.paymentStatus === 'cod' ? ' with cash on delivery' : ''}.</p>`);
+        box.innerHTML = `<p class="muted" style="margin:6px 0">Parcel ${r.body.parcel.weight} kg, ${r.body.parcel.length}×${r.body.parcel.breadth}×${r.body.parcel.height} cm</p>
+          <div class="rates">${list
+            .slice(0, 8)
+            .map(
+              (c, i) => `<label class="rate"><input type="radio" name="courier" value="${esc(c.courier_id)}" ${i === 0 ? 'checked' : ''}>
+              <span><strong>${esc(c.name)}</strong>${c.recommended ? ' <span class="pill">Recommended</span>' : ''}<br><span class="muted">${c.days ? `${c.days} days` : 'Delivery time not given'}${c.cod ? '' : ' · no cash on delivery'}</span></span>
+              <span class="num">${money(Math.round(c.rate))}</span></label>`,
+            )
+            .join('')}</div>
+          <button class="btn btn--ink" type="button" data-book style="margin-top:12px">Book courier</button>`;
+        $('[data-book]', box).addEventListener('click', async (e) => {
+          const courier = box.querySelector('input[name=courier]:checked')?.value;
+          const res = await call({ action: 'book', order_id: o.id, courier_id: Number(courier) || null }, e.currentTarget, 'Booking…');
+          if (!res.ok) return;
+          toast(`Booked with ${res.body.courier}. AWB ${res.body.awb}${res.body.notes?.length ? `. Note: ${res.body.notes.join(' ')}` : ''}`);
+          await refresh();
+          reopen();
+        });
+        return;
+      }
+      if (act === 'cancel' && !(await confirmDialog({ title: 'Cancel this shipment?', body: 'The courier booking is cancelled with Shiprocket. The order itself stays open, so you can book again.', ok: 'Cancel shipment' }))) return;
+      const r = await call({ action: act, order_id: o.id }, b, act === 'track' ? 'Refreshing…' : act === 'label' ? 'Getting label…' : 'Cancelling…');
+      if (!r.ok) return;
+      if (act === 'label' && r.body.label_url) window.open(r.body.label_url, '_blank', 'noopener');
+      toast({ track: `${r.body.applied} tracking updates`, cancel: 'Shipment cancelled', label: 'Label ready' }[act]);
+      await refresh();
+      reopen();
+    }),
+  );
+  const ev = $('[data-events]', d);
+  if (ev && LIVE) {
+    supabase
+      .from('shipment_events')
+      .select('at, status, location')
+      .eq('order_id', o.id)
+      .is('return_id', null)
+      .order('at', { ascending: false })
+      .limit(12)
+      .then(({ data }) => {
+        if (!ev.isConnected) return;
+        ev.innerHTML = (data || []).map((e) => `<li><span>${esc(e.status.toLowerCase())}${e.location ? `, ${esc(e.location)}` : ''}</span><span class="muted">${fmtDateTime(Date.parse(e.at))}</span></li>`).join('') || '<li class="muted">No courier updates yet.</li>';
+      });
+  }
+}
+
+function exportCsv(rows, label) {
+  const head = ['order', 'placed', 'status', 'payment', 'method', 'customer', 'email', 'phone', 'address', 'city', 'state', 'pin', 'items', 'subtotal', 'discount', 'coupon', 'shipping', 'cod_fee', 'total', 'refunded', 'courier', 'awb'];
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = rows.map((o) =>
+    [o.id, new Date(o.createdAt).toISOString(), o.status, o.paymentStatus, o.paymentMethod, o.customer.name, o.customer.email, o.customer.phone, o.customer.address, o.customer.city, o.customer.state, o.customer.pin,
+      o.lines.map((l) => `${l.qty}x ${l.sku}`).join(' '), o.subtotal ?? orderTotal(o), o.discount || 0, o.coupon || '', o.shipping || 0, o.codFee || 0, orderTotal(o), o.refunded || 0, o.courier || '', o.awb || o.trackingNumber || '']
+      .map(cell)
+      .join(','),
+  );
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([[head.join(','), ...lines].join('\n')], { type: 'text/csv' }));
+  a.download = `vertu-orders-${label.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`${rows.length} orders exported`);
 }

@@ -12,7 +12,7 @@ import { esc, $, $$, tile, bindWishButtons } from './ui.js';
 mountChrome({ current: 'account' });
 const main = $('#main');
 const STEPS = ['Pending', 'Processing', 'Shipped', 'Delivered'];
-const STEP_LABEL = { Pending: 'Order placed', Processing: 'Being packed', Shipped: 'On the way', Delivered: 'Delivered' };
+const STEP_LABEL = { Pending: 'Order placed', Processing: 'Being packed', Shipped: 'On the way', Delivered: 'Delivered', Cancelled: 'Cancelled' };
 const TABS = { orders: 'Orders', wishlist: 'Wishlist', addresses: 'Addresses', profile: 'Profile' };
 const friendly = (e) => {
   const m = e?.message || '';
@@ -160,7 +160,7 @@ function dashboard() {
 async function ordersPanel(panel) {
   const { data, error } = await supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
   if (error) return (panel.innerHTML = `<p class="err">${esc(friendly(error))}</p>`);
-  const orders = data.map(orderFromRow);
+  const orders = data.map((r) => ({ ...orderFromRow(r), token: r.access_token }));
   panel.innerHTML = `<h2>Orders</h2>${
     orders.length
       ? orders
@@ -172,7 +172,8 @@ async function ordersPanel(panel) {
               <ol class="steps" aria-label="Status: ${esc(STEP_LABEL[o.status])}">${STEPS.map((s, i) => `<li class="${i <= at ? 'is-done' : ''}">${STEP_LABEL[s]}</li>`).join('')}</ol>
               <ul class="order__lines">${o.lines.map((l) => `<li><span>${esc(l.colour)} ${esc(bySku(l.sku)?.product.name || l.category)} <em>× ${l.qty}</em></span><span>${fmt(l.price * l.qty)}</span></li>`).join('')}</ul>
               <div class="order__total"><span>Total</span><span>${fmt(total)}</span></div>
-              <p class="fine" style="margin-top:12px">Ships to ${esc(o.customer.address)}, ${esc(o.customer.city)} ${esc(o.customer.pin)}</p></article>`;
+              <p class="fine" style="margin-top:12px">Ships to ${esc(o.customer.address)}, ${esc(o.customer.city)} ${esc(o.customer.pin)}</p>
+              <p style="margin-top:12px"><a class="text-link" href="../order/?id=${encodeURIComponent(o.id)}&t=${encodeURIComponent(o.token)}">Tracking, invoice and returns</a></p></article>`;
           })
           .join('')
       : `<div class="empty-state" style="padding-top:0"><p>No orders yet. When you buy something it will show up here, with where it is on its way to you.</p><a class="btn btn--ink" href="../shop/">Go to the shop</a></div>`

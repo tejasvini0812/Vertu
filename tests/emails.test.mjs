@@ -24,6 +24,11 @@ export const SAMPLES = {
   newsletter_confirm: { token: '7f0c1c0e-1111-4222-8333-944444444444' },
   admin_new_order: { ...order, payment_method: 'cod', payment_status: 'cod', cod_fee: 49, total: 3918 },
   admin_attention: { ...order, flag: 'paid_after_hold_out_of_stock: VRT-LP-MUS' },
+  order_out_for_delivery: { ...order, payment_method: 'cod', payment_status: 'cod' },
+  return_requested: { ...order, return_items: [order.lines[0]], reason: 'damaged', details: 'Strap came loose', admin_note: '' },
+  return_approved: { ...order, return_items: [order.lines[0]], admin_note: 'Sorry about that. A courier will collect it on Monday.' },
+  return_rejected: { ...order, return_items: [order.lines[0]], admin_note: 'The return window had closed.' },
+  admin_return: { ...order, return_items: [order.lines[0]], reason: 'damaged', details: 'Strap came loose' },
   admin_low_stock: { sku: 'VRT-LP-COB', name: 'Laptop Bag', colour: 'Cobalt', stock: 3, threshold: 5 },
 };
 

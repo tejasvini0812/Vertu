@@ -370,5 +370,97 @@ await expect('stale emails are skipped, not sent days late', async () => {
   await svc(`select claim_outbox(1)`);
   return db.query(`select status from email_outbox where id=$1`, [claimed[1].id]);
 }, (r) => r.rows[0].status === 'skipped');
+
+// ---------------------------------------------------------------- Phase 5: shipping, invoices, returns
+const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
+await expect('financial year runs April to March', () => db.query(`select fy_of('2026-11-12') a, fy_of('2027-02-01') b, fy_of('2027-04-01 09:00+05:30') c`), (r) => r.rows[0].a === '26-27' && r.rows[0].b === '26-27' && r.rows[0].c === '27-28');
+await db.exec(`update settings set legal_name = '', gst_registered = true, gstin = '27ABCDE1234F1Z5', business_state = 'Maharashtra', business_address = '12 Studio Lane, Mumbai 400050', invoice_prefix = 'VRT', shipping_fee = 99, free_shipping_over = 3000, cod_enabled = true, cod_fee = 49, cod_max = 5000`);
+await expect('GSTIN format checked', () => as(OWNER, 'aal2', `update settings set gstin = 'NOTAGSTIN'`), errored('check'));
+const pune = { full_name: 'Kabir Singh', line1: '4 Lake Street', city: 'Pune', state: 'Maharashtra', pin: '411004' };
+const delhi = { full_name: 'Meera Kapoor', line1: '14 Park Avenue', city: 'New Delhi', state: 'Delhi', pin: '110016' };
+const cont = { email: 'kabir@example.com', phone: '+919811122233' };
+await db.exec(`update products set stock = 20 where id in ('VRT-LP-BLA','VRT-SL-COB','VRT-MS-TEA')`);
+const paidOrder = async (items, coupon, addr) => {
+  const o = await create(items, coupon, 'razorpay', cont, addr);
+  await svc(`select attach_razorpay_order($1, $2)`, [o.order_id, 'rzp_' + o.order_id]);
+  await svc(`select mark_order_paid($1, 'pay_x', $2)`, ['rzp_' + o.order_id, o.total * 100]);
+  return o;
+};
+const i1 = await paidOrder([{ sku: 'VRT-LP-BLA', qty: 1 }], null, pune);
+await expect('no invoice without seller details', () => as(STAFF, 'aal2', `select create_invoice($1) r`, [i1.order_id]), (r) => r.rows[0].r.error === 'seller_details_missing');
+await db.exec(`update settings set legal_name = 'Vertu Lifestyle LLP'`);
+await expect('unpaid orders are not invoiced', async () => { const x = await create([{ sku: 'VRT-SL-COB', qty: 1 }], null, 'razorpay', cont, pune); return as(STAFF, 'aal2', `select create_invoice($1) r`, [x.order_id]); }, (r) => r.rows[0].r.error === 'not_invoiceable');
+await expect('shoppers cannot issue invoices', () => as(OTHER, 'aal1', `select create_invoice($1)`, [i1.order_id]), errored('not_allowed'));
+
+// shipment booked, then courier updates
+await expect('browsers cannot record shipments or tracking', () => as(STAFF, 'aal2', `select apply_tracking('x','DELIVERED',now(),'',null,false,'{}')`), errored('permission'));
+await svc(`select record_shipment($1, 'SR1', 'SH1', 'AWB111', 'Delhivery Surface', 'https://labels.example/1.pdf')`, [i1.order_id]);
+await expect('booking moves the order to Processing with tracking', () => one(`select status, awb, tracking_url, courier from orders where id=$1`, [i1.order_id]).then((x) => ({ rows: [x] })),
+  (r) => r.rows[0].status === 'Processing' && r.rows[0].awb === 'AWB111' && r.rows[0].tracking_url === 'https://shiprocket.co/tracking/AWB111' && r.rows[0].courier === 'Delhivery Surface');
+const track = (awb, st, at, extra = {}) => svc(`select apply_tracking($1,$2,$3::timestamptz,$4,$5::timestamptz,$6,$7::jsonb) r`, [awb, st, at, extra.loc || 'Pune Hub', extra.etd || null, !!extra.ret, J({ awb, current_status: st })]).then((x) => x.rows[0].r);
+await expect('picked up: order Shipped', () => track('AWB111', 'Picked Up', '2026-11-12T10:00:00+05:30', { etd: '2026-11-15T18:00:00+05:30' }).then((r) => ({ rows: [r] })), (r) => r.rows[0].moved === 'Shipped');
+await expect('shipping issued the invoice automatically', () => one(`select number, data from invoices where order_id=$1`, [i1.order_id]).then((x) => ({ rows: [x] })), (r) => /^VRT\/\d\d-\d\d\/0001$/.test(r.rows[0]?.number));
+await expect('in-state GST: CGST + SGST, worked back from inclusive prices', () => one(`select data from invoices where order_id=$1`, [i1.order_id]).then((x) => ({ rows: [x.data] })), (r) => {
+  const d = r.rows[0]; const bag = d.lines[0]; const ship = d.lines[1];
+  return d.title === 'Tax invoice' && d.intra_state && bag.hsn === '4202' && Number(bag.taxable) === 2117.80 && Number(bag.cgst) === 190.60 && Number(bag.sgst) === 190.60
+    && ship.description === 'Shipping and handling' && Number(ship.taxable) === 83.90 && Number(d.totals.total) === 2598 && Number(d.totals.igst) === 0
+    && Math.abs(Number(d.totals.taxable) + Number(d.totals.cgst) + Number(d.totals.sgst) - 2598) < 0.001;
+});
+await expect('the shipped email went out with tracking', async () => ({ rows: await outbox(`kind='order_shipped' and related_order='${i1.order_id}'`) }), (r) => r.rows.length === 1 && r.rows[0].payload.tracking_number === 'AWB111');
+await expect('estimated delivery stored', () => one(`select eta, ship_status from orders where id=$1`, [i1.order_id]).then((x) => ({ rows: [x] })), (r) => r.rows[0].ship_status === 'PICKED UP' && String(r.rows[0].eta.toISOString?.() || r.rows[0].eta).startsWith('2026-11-15'));
+await track('AWB111', 'Out For Delivery', '2026-11-15T09:00:00+05:30');
+await track('AWB111', 'Out for delivery', '2026-11-15T09:05:00+05:30');
+await expect('out-for-delivery email once', async () => ({ rows: await outbox(`kind='order_out_for_delivery' and related_order='${i1.order_id}'`) }), (r) => r.rows.length === 1);
+await expect('an older event arriving late changes nothing', () => track('AWB111', 'In Transit', '2026-11-13T09:00:00+05:30').then((r) => ({ rows: [r] })), (r) => r.rows[0].stale === true);
+await expect('delivered: order Delivered with a date', async () => { await track('AWB111', 'DELIVERED', '2026-11-15T14:00:00+05:30'); return one(`select status, delivered_at, payment_status from orders where id=$1`, [i1.order_id]).then((x) => ({ rows: [x] })); }, (r) => r.rows[0].status === 'Delivered' && r.rows[0].delivered_at);
+await expect('tracking timeline kept', () => db.query(`select status from shipment_events where order_id=$1 order by at`, [i1.order_id]), (r) => r.rows.map((x) => x.status).join('>') === 'PICKED UP>IN TRANSIT>OUT FOR DELIVERY>OUT FOR DELIVERY>DELIVERED');
+await expect('unknown tracking numbers are ignored', () => track('NOPE', 'DELIVERED', '2026-11-15T14:00:00+05:30').then((r) => ({ rows: [r] })), (r) => r.rows[0].error === 'unknown_awb');
+const i2 = await paidOrder([{ sku: 'VRT-SL-COB', qty: 2 }, { sku: 'VRT-MS-TEA', qty: 1 }], 'WELCOME10', delhi);
+await svc(`select record_shipment($1, 'SR2', 'SH2', 'AWB222', 'Bluedart', null)`, [i2.order_id]);
+await expect('returned to origin is flagged', async () => { await track('AWB222', 'RTO Initiated', '2026-11-16T10:00:00+05:30'); return one(`select flag from orders where id=$1`, [i2.order_id]).then((x) => ({ rows: [x] })); }, (r) => r.rows[0].flag === 'returning_to_us: rto initiated');
+await expect('inter-state GST: IGST, discount spread over lines', async () => { await as(STAFF, 'aal2', `select create_invoice($1)`, [i2.order_id]); return one(`select number, data from invoices where order_id=$1`, [i2.order_id]).then((x) => ({ rows: [x] })); }, (r) => {
+  const d = r.rows[0].data; const goods = d.lines.filter((l) => l.sku);
+  const disc = goods.reduce((n, l) => n + Number(l.discount), 0);
+  return /0002$/.test(r.rows[0].number) && !d.intra_state && Number(d.totals.cgst) === 0 && Number(d.totals.igst) > 0 && Math.abs(disc - i2.quote.discount) < 0.001 && Number(d.totals.total) === i2.total;
+});
+await expect('invoice numbers never repeat', () => as(STAFF, 'aal2', `select create_invoice($1) r`, [i2.order_id]), (r) => r.rows[0].r.existing === true);
+await expect('buyer reads the invoice with the order link', () => as(null, null, `select invoice_lookup($1, $2) a, invoice_lookup($1, gen_random_uuid()) b`, [i2.order_id, i2.access_token]), (r) => r.rows[0].a?.number && r.rows[0].b === null);
+await expect('others cannot read invoices', () => as(OTHER, 'aal1', `select * from invoices`), rows(0));
+await db.exec(`update settings set gst_registered = false`);
+await expect('not registered: plain invoice without tax', async () => { const o = await paidOrder([{ sku: 'VRT-LP-BLA', qty: 1 }], null, pune); await as(STAFF, 'aal2', `select create_invoice($1)`, [o.order_id]); return one(`select data from invoices where order_id=$1`, [o.order_id]).then((x) => ({ rows: [x.data] })); },
+  (r) => r.rows[0].title === 'Invoice' && Number(r.rows[0].totals.cgst) + Number(r.rows[0].totals.igst) === 0 && Number(r.rows[0].lines[0].taxable) === 2499);
+await db.exec(`update settings set gst_registered = true`);
+
+// returns
+const tokenOf = async (id) => (await one(`select access_token from orders where id=$1`, [id])).access_token;
+const ret = (id, token, items, reason = 'damaged') => as(null, null, `select request_return($1, $2, $3::jsonb, $4, 'Strap stitching came loose') r`, [id, token, J(items), reason]).then((x) => x.rows[0].r);
+await expect('returns need a delivered order', async () => ({ rows: [await ret(i2.order_id, i2.access_token, [{ sku: 'VRT-SL-COB', qty: 1 }])] }), (r) => r.rows[0].error === 'not_delivered');
+await expect('wrong link finds nothing', async () => ({ rows: [await ret(i1.order_id, '00000000-0000-0000-0000-000000000000', [{ sku: 'VRT-LP-BLA', qty: 1 }])] }), (r) => r.rows[0].error === 'not_found');
+await expect('cannot return more than was bought', async () => ({ rows: [await ret(i1.order_id, await tokenOf(i1.order_id), [{ sku: 'VRT-LP-BLA', qty: 2 }])] }), (r) => r.rows[0].error === 'bad_items');
+let rid;
+await expect('return requested', async () => { const r = await ret(i1.order_id, await tokenOf(i1.order_id), [{ sku: 'VRT-LP-BLA', qty: 1 }]); rid = r.id; return { rows: [r] }; }, (r) => r.rows[0].ok);
+await expect('...and acknowledged to buyer and store', async () => ({ rows: (await outbox(`dedupe_key like '%return%:${rid}'`)).map((x) => x.kind) }), (r) => r.rows.sort().join() === 'admin_return,return_requested');
+await expect('the same bag cannot be returned twice', async () => ({ rows: [await ret(i1.order_id, await tokenOf(i1.order_id), [{ sku: 'VRT-LP-BLA', qty: 1 }])] }), (r) => r.rows[0].error === 'bad_items');
+await expect('buyer sees the request on the order page', async () => as(null, null, `select order_returns($1, $2) r`, [i1.order_id, await tokenOf(i1.order_id)]), (r) => r.rows[0].r[0].status === 'requested');
+await expect('shoppers cannot approve returns', () => as(OTHER, 'aal1', `select decide_return(${rid}, true, '')`), errored('not_allowed'));
+await expect('staff approve, buyer told', async () => { await as(STAFF, 'aal2', `select decide_return(${rid}, true, 'Sorry about that. A courier will collect it.')`); return { rows: await outbox(`kind='return_approved'`) }; }, (r) => r.rows.length === 1 && r.rows[0].payload.admin_note.startsWith('Sorry'));
+await svc(`select set_return_pickup(${rid}, 'RAWB1')`);
+await track('RAWB1', 'Picked Up', '2026-11-17T10:00:00+05:30', { ret: true });
+await expect('return pickup tracked', () => one(`select status from return_requests where id=${rid}`).then((x) => ({ rows: [x] })), (r) => r.rows[0].status === 'in_transit');
+await track('RAWB1', 'Delivered', '2026-11-19T10:00:00+05:30', { ret: true });
+const blaBefore = await stock('VRT-LP-BLA');
+await expect('received: restocked and refund suggested', async () => ({ rows: [(await as(STAFF, 'aal2', `select receive_return(${rid}) r`)).rows[0].r] }), (r) => r.rows[0].refund_amount === 2499);
+await expect('only the returned items went back on the shelf', async () => ({ rows: [{ s: await stock('VRT-LP-BLA') }] }), (r) => r.rows[0].s === blaBefore + 1);
+await expect('closed as refunded', async () => { await as(STAFF, 'aal2', `select close_return(${rid}, true)`); return one(`select status from return_requests where id=${rid}`).then((x) => ({ rows: [x] })); }, (r) => r.rows[0].status === 'refunded');
+await expect('return window closes', async () => {
+  const o = await paidOrder([{ sku: 'VRT-LP-BLA', qty: 1 }], null, pune);
+  await svc(`select record_shipment($1, 'SR3', 'SH3', 'AWB333', 'X', null)`, [o.order_id]);
+  await track('AWB333', 'Delivered', '2026-11-01T10:00:00+05:30');
+  await db.exec(`update orders set delivered_at = now() - interval '8 days' where id='${o.order_id}'`);
+  return { rows: [await ret(o.order_id, o.access_token, [{ sku: 'VRT-LP-BLA', qty: 1 }])] };
+}, (r) => r.rows[0].error === 'window_closed');
+await expect('order page shows tracking, invoice and return deadline', async () => as(null, null, `select order_lookup($1, $2) r`, [i1.order_id, await tokenOf(i1.order_id)]), (r) => {
+  const o = r.rows[0].r; return o.events.length === 5 && /^VRT\//.test(o.invoice) && o.return_until && o.courier === 'Delhivery Surface';
+});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

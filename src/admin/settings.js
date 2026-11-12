@@ -2,6 +2,7 @@ import { getState, update, describeError, LIVE, supabase } from '../store.js';
 import { session, signOut } from './auth.js';
 import { esc, $, toast, confirmDialog, enter, listen } from './ui.js';
 import { MAIL_LABEL, MAIL_STATUS } from './orders.js';
+import { INDIAN_STATES as STATES } from '../delivery.js';
 
 const ENTITY = { products: 'Product', orders: 'Order', site_content: 'Editorial', settings: 'Settings', admin_users: 'Team', coupons: 'Discount', categories: 'Collection' };
 const when = (t) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -64,8 +65,34 @@ export async function renderSettings(root) {
             <div class="field"><label for="sh-codfee">Cash on delivery fee (₹)</label><input id="sh-codfee" class="input" type="number" min="0" value="${s.settings.codFee}" ${owner ? '' : 'disabled'} /></div>
             <div class="field"><label for="sh-codmax">Cash on delivery up to (₹)</label><input id="sh-codmax" class="input" type="number" min="0" value="${s.settings.codMax}" ${owner ? '' : 'disabled'} /><small>Larger orders must pay online.</small></div>
           </div>
+          <div class="row2">
+            <div class="field"><label for="sh-loc">Shiprocket pickup location</label><input id="sh-loc" class="input" maxlength="60" value="${esc(s.settings.pickupLocation)}" ${owner ? '' : 'disabled'} /><small>Exactly as named in Shiprocket → Settings → Pickup addresses.</small></div>
+            <div class="field"><label for="sh-pin">Pickup PIN code</label><input id="sh-pin" class="input" inputmode="numeric" maxlength="6" value="${esc(s.settings.pickupPin)}" ${owner ? '' : 'disabled'} /><small>Where couriers collect from (also used for delivery estimates).</small></div>
+          </div>
+          <div class="field" style="max-width:260px"><label for="sh-ret">Return window (days after delivery)</label><input id="sh-ret" class="input" type="number" min="0" max="60" value="${s.settings.returnWindowDays}" ${owner ? '' : 'disabled'} /><small>0 turns returns off. Match your returns policy.</small></div>
           <div class="field" style="max-width:260px"><label for="sh-hold">Hold unpaid items for (minutes)</label><input id="sh-hold" class="input" type="number" min="5" max="120" value="${s.settings.holdMinutes}" ${owner ? '' : 'disabled'} /><small>While a shopper pays online.</small></div>
           ${owner ? '<div><button class="btn btn--ink" type="submit">Save shipping and payment</button></div>' : '<p class="muted">Only an owner can change these.</p>'}
+        </form>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="s-biz">
+      <div class="block__intro"><h2 id="s-biz">Business and invoices</h2><p>Printed on invoices and used as the return address. Check the GST details with your accountant.</p></div>
+      <div class="block__form">
+        <form data-biz-form novalidate style="display:grid;gap:18px">
+          <div class="field"><label for="b-name">Legal business name</label><input id="b-name" class="input" maxlength="120" value="${esc(s.settings.legalName)}" ${owner ? '' : 'disabled'} /></div>
+          <div class="field"><label for="b-addr">Address</label><input id="b-addr" class="input" maxlength="300" value="${esc(s.settings.businessAddress)}" placeholder="Building, street, area" ${owner ? '' : 'disabled'} /></div>
+          <div class="row2">
+            <div class="field"><label for="b-city">City</label><input id="b-city" class="input" maxlength="80" value="${esc(s.settings.businessCity)}" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="b-state">State</label><select id="b-state" class="select" ${owner ? '' : 'disabled'}><option value="">Choose…</option>${STATES.map((x) => `<option ${x === s.settings.businessState ? 'selected' : ''}>${x}</option>`).join('')}</select><small>Decides CGST + SGST (same state) or IGST.</small></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="b-phone">Phone (+91)</label><input id="b-phone" class="input" inputmode="numeric" maxlength="10" value="${esc((s.settings.businessPhone || '').replace(/^\+91/, ''))}" ${owner ? '' : 'disabled'} /></div>
+            <div class="field"><label for="b-prefix">Invoice prefix</label><input id="b-prefix" class="input" maxlength="6" value="${esc(s.settings.invoicePrefix)}" style="text-transform:uppercase" ${owner ? '' : 'disabled'} /><small>Numbers look like ${esc(s.settings.invoicePrefix || 'VRT')}/26-27/0001 and restart each April.</small></div>
+          </div>
+          <label class="switch"><input type="checkbox" id="b-reg" ${s.settings.gstRegistered ? 'checked' : ''} ${owner ? '' : 'disabled'}><i></i>Registered under GST</label>
+          <div class="field" style="max-width:320px"><label for="b-gstin">GSTIN</label><input id="b-gstin" class="input" maxlength="15" value="${esc(s.settings.gstin)}" style="text-transform:uppercase" placeholder="27ABCDE1234F1Z5" ${owner ? '' : 'disabled'} /></div>
+          ${owner ? '<div><button class="btn btn--ink" type="submit">Save business details</button></div>' : ''}
         </form>
       </div>
     </section>
@@ -131,12 +158,36 @@ export async function renderSettings(root) {
   $('[data-ship-form]', root).addEventListener('submit', (e) => {
     e.preventDefault();
     const n = (id) => Math.round(Number($(id, root).value));
-    const v = { shippingFee: n('#sh-fee'), freeShippingOver: n('#sh-free'), codEnabled: $('#sh-cod', root).checked, codFee: n('#sh-codfee'), codMax: n('#sh-codmax'), holdMinutes: n('#sh-hold') };
+    const v = { shippingFee: n('#sh-fee'), freeShippingOver: n('#sh-free'), codEnabled: $('#sh-cod', root).checked, codFee: n('#sh-codfee'), codMax: n('#sh-codmax'), holdMinutes: n('#sh-hold'),
+      pickupLocation: $('#sh-loc', root).value.trim() || 'Primary', pickupPin: $('#sh-pin', root).value.trim(), returnWindowDays: n('#sh-ret') };
+    if (v.pickupPin && !/^[1-9][0-9]{5}$/.test(v.pickupPin)) return toast('The pickup PIN code must be 6 digits.');
+    if (!(v.returnWindowDays >= 0 && v.returnWindowDays <= 60)) return toast('Return window: 0 to 60 days.');
     if ([v.shippingFee, v.freeShippingOver, v.codFee, v.codMax].some((x) => !(x >= 0))) return toast('Use whole rupee amounts of 0 or more.');
     if (!(v.holdMinutes >= 5 && v.holdMinutes <= 120)) return toast('Hold items for 5 to 120 minutes.');
     try {
       update((st) => Object.assign(st.settings, v)).then(() => LIVE && toast('Shipping and payment saved'), () => {});
       if (!LIVE) toast('Shipping and payment saved');
+    } catch (err) {
+      toast(describeError(err));
+    }
+  });
+
+  $('[data-biz-form]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const val = (id) => $(id, root).value.trim();
+    const gstin = val('#b-gstin').toUpperCase();
+    const phone = val('#b-phone').replace(/\D/g, '');
+    const prefix = val('#b-prefix').toUpperCase();
+    if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) return toast('That GSTIN doesn’t look right (15 characters, e.g. 27ABCDE1234F1Z5).');
+    if ($('#b-reg', root).checked && !gstin) return toast('Add your GSTIN, or turn off “Registered under GST”.');
+    if (phone && !/^[6-9][0-9]{9}$/.test(phone)) return toast('Enter a 10-digit mobile number.');
+    if (!/^[A-Z0-9]{1,6}$/.test(prefix)) return toast('Invoice prefix: 1–6 letters or numbers.');
+    try {
+      update((st) => Object.assign(st.settings, {
+        legalName: val('#b-name'), businessAddress: val('#b-addr'), businessCity: val('#b-city'), businessState: $('#b-state', root).value,
+        businessPhone: phone ? '+91' + phone : '', invoicePrefix: prefix, gstRegistered: $('#b-reg', root).checked, gstin,
+      })).then(() => LIVE && toast('Business details saved'), () => {});
+      if (!LIVE) toast('Business details saved');
     } catch (err) {
       toast(describeError(err));
     }

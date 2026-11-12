@@ -53,7 +53,8 @@ function loadLocal() {
         // demo data saved before Phase 3 has no shipping rules or coupons
         s.settings = { ...seed().settings, ...s.settings };
         if (!s.coupons) s.coupons = [];
-        if (!s.categories) s.categories = BASE_CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) }));
+        if (!s.categories) s.categories = seed().categories;
+        s.categories = s.categories.map((c) => ({ ...seed().categories.find((x) => x.id === c.id), ...c }));
         return s;
       }
     }

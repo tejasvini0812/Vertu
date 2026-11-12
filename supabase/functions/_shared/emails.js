@@ -111,6 +111,54 @@ const T = {
       text: `It's on its way.\n\nOrder ${o.order_id} has left us${o.courier ? ` with ${o.courier}` : ''}.${o.tracking_number ? ` Tracking number: ${o.tracking_number}.` : ''}\n\n${o.tracking_url ? `Track it: ${o.tracking_url}` : `View your order: ${orderUrl(cfg, o)}`}`,
     };
   },
+  order_out_for_delivery(o, cfg) {
+    const cod = o.payment_method === 'cod' && o.payment_status === 'cod';
+    return {
+      subject: `Arriving today: order ${o.order_id}`,
+      preheader: cod ? `Please keep ${inr(o.total)} ready.` : 'Your order is out for delivery.',
+      body: `${h1('Arriving today.')}${p(`Order ${esc(o.order_id)} is out for delivery${o.courier ? ` with ${esc(o.courier)}` : ''}. The courier may call ${esc(o.phone || 'your number')} when they’re close.`)}
+        ${cod ? p(`Please keep <strong style="color:${C.ink}">${inr(o.total)}</strong> ready for the courier.`) : ''}
+        ${button(o.tracking_url || orderUrl(cfg, o), o.tracking_url ? 'Track your parcel' : 'View your order')}`,
+      text: `Arriving today.\n\nOrder ${o.order_id} is out for delivery.${cod ? ` Please keep ${inr(o.total)} ready.` : ''}\n\n${o.tracking_url || orderUrl(cfg, o)}`,
+    };
+  },
+  return_requested(o, cfg) {
+    return {
+      subject: `We’ve got your return request for ${o.order_id}`,
+      preheader: 'We’ll reply within two working days.',
+      body: `${h1('Return request received.')}${p(`Thanks for letting us know. We’ll look at your request for order ${esc(o.order_id)} and reply within two working days.`)}
+        ${label('Returning')}${linesTable(o.return_items)}<div style="height:20px"></div>${button(orderUrl(cfg, o), 'View your order')}`,
+      text: `Return request received for order ${o.order_id}. We'll reply within two working days.\n\n${textLines(o.return_items)}\n\n${orderUrl(cfg, o)}`,
+    };
+  },
+  return_approved(o, cfg) {
+    return {
+      subject: `Your return for ${o.order_id} is approved`,
+      preheader: 'A courier will collect it.',
+      body: `${h1('Return approved.')}${o.admin_note ? p(esc(o.admin_note)) : ''}${p('A courier will contact you to collect the parcel. Please pack the bag with its tags, in the original packaging if you still have it.')}
+        ${p('Once it reaches us and we’ve checked it, we’ll refund you to your original payment method (cash orders: to a bank account we’ll ask you for).')}
+        ${label('Returning')}${linesTable(o.return_items)}<div style="height:20px"></div>${button(orderUrl(cfg, o), 'View your order')}`,
+      text: `Return approved for order ${o.order_id}.${o.admin_note ? `\n\n${o.admin_note}` : ''}\n\nA courier will contact you to collect the parcel. We'll refund you once it reaches us.\n\n${orderUrl(cfg, o)}`,
+    };
+  },
+  return_rejected(o, cfg) {
+    return {
+      subject: `About your return request for ${o.order_id}`,
+      preheader: 'We couldn’t accept this return.',
+      body: `${h1('We couldn’t accept this return.')}${p(o.admin_note ? esc(o.admin_note) : 'This return doesn’t meet our returns policy.')}${p('If you think we’ve got this wrong, reply to this email and a person will take another look.')}`,
+      text: `We couldn't accept your return for order ${o.order_id}.\n\n${o.admin_note || ''}\n\nReply to this email if you think we've got it wrong.`,
+    };
+  },
+  admin_return(o, cfg) {
+    const why = { damaged: 'Damaged', wrong_item: 'Wrong item', not_as_described: 'Not as described', changed_mind: 'Changed their mind', other: 'Other' }[o.reason] || o.reason;
+    return {
+      subject: `Return requested: ${o.order_id} (${why})`,
+      preheader: `${o.name}: ${why}`,
+      body: `${h1('A return was requested.')}${p(`${esc(o.name)}, order ${esc(o.order_id)}. Reason: <strong style="color:${C.ink}">${esc(why)}</strong>.`)}${o.details ? p(`“${esc(o.details)}”`) : ''}
+        ${linesTable(o.return_items)}<div style="height:20px"></div>${button(`${cfg.siteUrl}/admin/#/returns`, 'Review the return')}`,
+      text: `Return requested: ${o.order_id} (${why})\n${o.details || ''}\n\n${textLines(o.return_items)}\n\n${cfg.siteUrl}/admin/#/returns`,
+    };
+  },
   order_delivered(o, cfg) {
     return {
       subject: `Delivered: order ${o.order_id}`,
@@ -190,7 +238,10 @@ const T = {
       subject: `Order ${o.order_id} needs a look`,
       preheader: String(o.flag || ''),
       body: `${h1('An order needs a look.')}${p(`Order ${esc(o.order_id)} (${inr(o.total)}, ${esc(o.name)}): <strong style="color:${C.ink}">${esc(String(o.flag || '').replace(/_/g, ' '))}</strong>.`)}
-        ${p('This usually means a payment arrived after its hold expired and the stock had sold out. Refund it or contact the customer.')}${button(adminOrderUrl(cfg, o), 'Open the order')}`,
+        ${p(/^returning_to_us/.test(o.flag || '') ? 'The courier is bringing this parcel back to us (delivery didn’t succeed). Contact the customer to re-ship or refund.'
+          : /^delivery_problem/.test(o.flag || '') ? 'The courier reported a delivery problem. Check the tracking and contact the customer.'
+          : /^amount_mismatch/.test(o.flag || '') ? 'The amount paid didn’t match the order total. Check the payment in Razorpay before shipping.'
+          : 'A payment arrived after the order’s hold had expired and the stock had sold out. Refund it or contact the customer.')}${button(adminOrderUrl(cfg, o), 'Open the order')}`,
       text: `Order ${o.order_id} needs a look: ${o.flag}\n\n${adminOrderUrl(cfg, o)}`,
     };
   },

@@ -16,6 +16,13 @@ export const STATUSES = ['Pending', 'Processing', 'Shipped', 'Delivered'];
  * Specs are left empty on purpose: the brand deck has no dimensions or materials. Fill them in from
  * the admin (Products -> Collection details); empty specs are simply not shown.
  */
+/** Parcel for one packed bag (kg, cm), used to book couriers. Estimates: weigh a packed bag and update in the admin. */
+export const PACKAGES = {
+  sling: { weight: 0.6, length: 32, breadth: 12, height: 28 },
+  mens: { weight: 0.4, length: 26, breadth: 8, height: 30 },
+  laptop: { weight: 1.0, length: 42, breadth: 14, height: 34 },
+};
+
 export const CATEGORY_DETAILS = {
   sling: {
     description:
@@ -191,8 +198,10 @@ export function seed(now = Date.now()) {
   return {
     version: 1,
     seededAt: now,
-    categories: CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]) })),
-    settings: { lowStock: 5, shippingFee: 0, freeShippingOver: 0, codEnabled: false, codFee: 0, codMax: 5000, holdMinutes: 15, notifyEmail: '', abandonedCartEnabled: false },
+    categories: CATEGORIES.map((c) => ({ ...c, ...structuredClone(CATEGORY_DETAILS[c.id]), hsn: '4202', gstRate: 18, package: { ...PACKAGES[c.id] } })),
+    settings: { lowStock: 5, shippingFee: 0, freeShippingOver: 0, codEnabled: false, codFee: 0, codMax: 5000, holdMinutes: 15, notifyEmail: '', abandonedCartEnabled: false,
+      pickupLocation: 'Primary', pickupPin: '', legalName: '', gstin: '', gstRegistered: false, businessAddress: '', businessCity: '',
+      businessState: '', businessPhone: '', invoicePrefix: 'VRT', returnWindowDays: 7 },
     coupons: [],
     products,
     orders,

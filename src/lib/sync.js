@@ -30,6 +30,17 @@ export const settingsFromRow = (r) => ({
   holdMinutes: r.hold_minutes ?? 15,
   notifyEmail: r.notify_email || '',
   abandonedCartEnabled: !!r.abandoned_cart_enabled,
+  pickupLocation: r.pickup_location || 'Primary',
+  pickupPin: r.pickup_pin || '',
+  legalName: r.legal_name || '',
+  gstin: r.gstin || '',
+  gstRegistered: !!r.gst_registered,
+  businessAddress: r.business_address || '',
+  businessCity: r.business_city || '',
+  businessState: r.business_state || '',
+  businessPhone: r.business_phone || '',
+  invoicePrefix: r.invoice_prefix || 'VRT',
+  returnWindowDays: r.return_window_days ?? 7,
 });
 const SETTINGS_COLUMNS = {
   lowStock: 'low_stock',
@@ -41,7 +52,20 @@ const SETTINGS_COLUMNS = {
   holdMinutes: 'hold_minutes',
   notifyEmail: 'notify_email',
   abandonedCartEnabled: 'abandoned_cart_enabled',
+  pickupLocation: 'pickup_location',
+  pickupPin: 'pickup_pin',
+  legalName: 'legal_name',
+  gstin: 'gstin',
+  gstRegistered: 'gst_registered',
+  businessAddress: 'business_address',
+  businessCity: 'business_city',
+  businessState: 'business_state',
+  businessPhone: 'business_phone',
+  invoicePrefix: 'invoice_prefix',
+  returnWindowDays: 'return_window_days',
 };
+// text settings whose empty value must be stored as NULL (they have format checks)
+const NULLABLE = new Set(['notify_email', 'pickup_pin', 'gstin', 'business_phone']);
 export const COUPON_FIELDS = ['kind', 'value', 'min_subtotal', 'starts_at', 'ends_at', 'max_uses', 'active', 'note'];
 
 export const orderFromRow = (r) => ({
@@ -77,6 +101,12 @@ export const orderFromRow = (r) => ({
   courier: r.courier || '',
   trackingNumber: r.tracking_number || '',
   trackingUrl: r.tracking_url || '',
+  awb: r.awb || '',
+  shipmentId: r.shipment_id || '',
+  labelUrl: r.label_url || '',
+  shipStatus: r.ship_status || '',
+  eta: r.eta || null,
+  deliveredAt: r.delivered_at ? Date.parse(r.delivered_at) : null,
 });
 
 export const categoryFromRow = (r) => ({
@@ -86,6 +116,9 @@ export const categoryFromRow = (r) => ({
   unit: r.unit,
   description: r.description || '',
   details: r.details || {},
+  hsn: r.hsn || '4202',
+  gstRate: r.gst_rate != null ? Number(r.gst_rate) : 18,
+  package: r.package || { weight: 0.5, length: 30, breadth: 10, height: 25 },
 });
 
 export const contentFromRow = (r) => ({ ...r.published, publishedAt: r.published_at ? Date.parse(r.published_at) : null });
@@ -141,12 +174,15 @@ export function diff(prev, next) {
     const values = {};
     if ((old.description || '') !== (c.description || '')) values.description = c.description || '';
     if (!same(old.details || {}, c.details || {})) values.details = c.details || {};
+    if (c.hsn !== undefined && old.hsn !== c.hsn) values.hsn = c.hsn;
+    if (c.gstRate !== undefined && old.gstRate !== c.gstRate) values.gst_rate = c.gstRate;
+    if (c.package !== undefined && !same(old.package, c.package)) values.package = c.package;
     if (Object.keys(values).length) ops.push({ table: 'categories', type: 'update', id: c.id, values });
   }
 
   const sv = {};
   for (const [k, col] of Object.entries(SETTINGS_COLUMNS)) {
-    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k] === '' ? null : next.settings[k];
+    if (next.settings[k] !== undefined && prev.settings[k] !== next.settings[k]) sv[col] = next.settings[k] === '' && NULLABLE.has(col) ? null : next.settings[k];
   }
   if (Object.keys(sv).length) ops.push({ table: 'settings', type: 'update', id: 1, values: sv });
 
