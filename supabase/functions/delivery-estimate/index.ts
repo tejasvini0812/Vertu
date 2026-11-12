@@ -15,4 +15,4 @@ serve(async (req) => {
     },
   });
   return json(req, r.status, r.body);
-});
+}, { name: 'delivery-estimate', limit: { max: 40, windowSeconds: 600 } });

@@ -55,15 +55,51 @@ export const deps = {
   now: () => new Date(),
 };
 
-/** Wraps a handler with CORS preflight, method check and error reporting (no internals leak to the browser). */
-export function serve(handler: (req: Request) => Promise<Response>) {
+/** The caller's IP as seen by Supabase's edge (first hop of x-forwarded-for). */
+export const clientIp = (req: Request) =>
+  (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+
+/** Records a server-side problem for System health in the admin. Never throws. */
+export async function logEvent(kind: 'function_error' | 'rate_limited', source: string, message: string, detail: Record<string, unknown> = {}) {
+  try {
+    await admin.from('ops_events').insert({ kind, source, message: String(message).slice(0, 500), detail });
+  } catch (_) {
+    /* monitoring must never break the request */
+  }
+}
+
+type Limit = { max: number; windowSeconds: number };
+
+/**
+ * Wraps a handler with CORS preflight, method check, an optional per-IP rate limit and error
+ * reporting (crashes are logged to ops_events; no internals leak to the browser).
+ */
+export function serve(handler: (req: Request) => Promise<Response>, opts: { name?: string; limit?: Limit } = {}) {
+  const name = opts.name || 'function';
   Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
     if (req.method !== 'POST') return json(req, 405, { error: 'method_not_allowed' });
+    if (opts.limit) {
+      const ip = clientIp(req);
+      const { data: allowed, error } = await admin.rpc('hit_rate_limit', {
+        p_key: `${name}:${ip}`,
+        p_max: opts.limit.max,
+        p_window_seconds: opts.limit.windowSeconds,
+      });
+      // If the counter itself fails, let the request through rather than block real shoppers.
+      if (!error && allowed === false) {
+        if (Math.random() < 0.2) await logEvent('rate_limited', name, `Too many requests from one address`, { ip: ip.replace(/\.\d+$/, '.x') });
+        return new Response(JSON.stringify({ error: 'too_many_requests' }), {
+          status: 429,
+          headers: { ...cors(req), 'Content-Type': 'application/json', 'Retry-After': String(opts.limit.windowSeconds) },
+        });
+      }
+    }
     try {
       return await handler(req);
     } catch (e) {
       console.error(e);
+      await logEvent('function_error', name, e instanceof Error ? e.message : String(e));
       return json(req, 500, { error: 'server_error' });
     }
   });

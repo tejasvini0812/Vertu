@@ -1,4 +1,5 @@
-import { PRODUCTS, SKUS, bySku, fmt } from './data.js';
+import { track } from './analytics.js';
+import { PRODUCTS, SKUS, bySku, fmt, productHref } from './data.js';
 
 /**
  * The bag. Lines are { sku, qty }, so a line survives colours being added or reordered in the admin.
@@ -72,6 +73,7 @@ export const cart = {
     else items.push({ sku, qty: next });
     save();
     emit();
+    track('add_to_cart', { value: hit.colour.price * (next - before), items: [{ sku, name: hit.product.name, colour: hit.colour.name, price: hit.colour.price, qty: next - before }] });
     return true;
   },
   setQty(sku, qty) {
@@ -157,7 +159,7 @@ export function initCartUI({ onOpen, onClose, base = '' } = {}) {
     list.innerHTML = items
       .map((i) => {
         const { product: p, colour: c } = bySku(i.sku);
-        const href = `${base}product/?c=${p.id}&colour=${encodeURIComponent(c.name.toLowerCase())}`;
+        const href = productHref(p.id, c.name, base);
         return `<li data-sku="${i.sku}">
           <a href="${href}" tabindex="-1" aria-hidden="true"><img src="${c.img || p.img}" alt="" width="72" height="90" /></a>
           <div class="cart__info">

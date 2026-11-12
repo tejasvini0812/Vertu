@@ -1,0 +1,50 @@
+# Nightly database backup, encrypted, kept for 30 days as a workflow artifact.
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL     Supabase -> Connect -> Session pooler connection string (with the database password)
+#   BACKUP_PASSPHRASE   a long random passphrase; store it in your password manager, it's needed to restore
+# Restore steps are in the README ("Backups and restoring").
+name: Database backup
+on:
+  schedule:
+    - cron: '30 21 * * *' # 03:00 India time
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB" ] || [ -z "$PASS" ]; then
+            echo "::error::Add the SUPABASE_DB_URL and BACKUP_PASSPHRASE repository secrets to turn on backups."
+            exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Dump roles, schema and data
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir backup
+          supabase db dump --db-url "$DB" --role-only -f backup/roles.sql
+          supabase db dump --db-url "$DB" -f backup/schema.sql
+          supabase db dump --db-url "$DB" --data-only --use-copy -f backup/data.sql
+          ls -la backup
+      - name: Encrypt
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="vertu-db-$(date -u +%Y-%m-%d)"
+          tar czf "$name.tar.gz" backup
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "$name.tar.gz.gpg" "$name.tar.gz"
+          rm -rf backup "$name.tar.gz"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.tar.gz.gpg
+          retention-days: 30

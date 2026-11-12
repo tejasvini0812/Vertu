@@ -1,14 +1,15 @@
+import './monitor.js';
 import './styles.css';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
-import { GL } from './gl.js';
-import { PRODUCTS, HERO_SLIDES, CRAFT_IMAGES, CONTENT, fmt, firstInStock } from './data.js';
+import { PRODUCTS, HERO_SLIDES, CRAFT_IMAGES, CONTENT, fmt, firstInStock, productHref } from './data.js';
 import { cart, initCartUI, toast } from './cart.js';
 import { bindAccountLink } from './chrome.js';
 import { newsletterForm, bindNewsletterForms } from './newsletter.js';
 import { legalLinks, fillEntity } from './legal/footer.js';
 import { initConsent } from './consent.js';
+import './analytics.js';
 import './customer.js';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -110,7 +111,16 @@ $$('a[href^="#"]').forEach((a) => {
 /* WebGL planes                                                        */
 /* ------------------------------------------------------------------ */
 
-const gl = new GL($('#gl'));
+// three.js (about 500 KB) is only downloaded when the browser can actually draw WebGL.
+const canDrawGL = (() => {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch (_) {
+    return false;
+  }
+})();
+const gl = canDrawGL ? new (await import('./gl.js')).GL($('#gl')) : { ok: false };
 const planes = new Map();
 const heroStage = $('[data-hero]');
 
@@ -544,7 +554,7 @@ function renderBuy({ swap = false } = {}) {
     buy.shown = url;
   }
   img.alt = `${p.name} in ${colour.name}`;
-  $('[data-buy-details]').href = `product/?c=${p.id}&colour=${encodeURIComponent(colour.name.toLowerCase())}`;
+  $('[data-buy-details]').href = productHref(p.id, colour.name);
 }
 
 const pickProduct = (id) => {

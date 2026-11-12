@@ -1,3 +1,4 @@
+import '../monitor.js';
 import '../styles.css';
 import '../pages.css';
 import { bySku, fmt } from '../data.js';
@@ -9,6 +10,7 @@ import { getState, update } from '../store.js';
 import { priceCart, COUPON_REASON } from '../lib/pricing.js';
 import { INDIAN_STATES, validPin, liveEstimate } from '../delivery.js';
 import { esc, $, $$ } from './ui.js';
+import { track } from '../analytics.js';
 
 mountChrome({ current: 'checkout' });
 const main = $('#main');
@@ -46,6 +48,10 @@ await customerReady;
 if (!cart.items.length) {
   main.innerHTML = `<div class="empty-state"><h1 class="page-title">Your bag is empty.</h1><p>Choose a colour you love, then come back here to check out.</p><a class="btn btn--ink" href="../shop/">Go to the shop</a></div>`;
 } else {
+  track('begin_checkout', {
+    value: cart.items.reduce((n, i) => n + (bySku(i.sku)?.colour.price || 0) * i.qty, 0),
+    items: cart.items.map((i) => ({ sku: i.sku, name: bySku(i.sku)?.product.name, colour: bySku(i.sku)?.colour.name, price: bySku(i.sku)?.colour.price, qty: i.qty })),
+  });
   if (accountsEnabled && customer.user) {
     const { data } = await supabase.from('addresses').select('*').order('is_default', { ascending: false }).order('created_at');
     addresses = data || [];
@@ -334,6 +340,7 @@ const ERRORS = {
   payment_provider: 'The payment service didn’t respond. Nothing was charged. Please try again in a moment.',
   network: 'Could not reach the server. Check your connection and try again.',
   zero_total: 'This order has nothing to pay.',
+  too_many_requests: 'Too many attempts from this connection. Please wait a few minutes and try again.',
 };
 
 async function pay() {

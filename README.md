@@ -48,6 +48,7 @@ The site runs in one of two modes:
    - `supabase/migrations/20261112030000_phase4_emails.sql`: email outbox and triggers, newsletter, order tracking
    - `supabase/migrations/20261112040000_phase5_fulfilment.sql`: shipments and tracking, GST invoices, returns, delivery estimates
    - `supabase/migrations/20261112050000_phase6_compliance.sql`: legal and care details, support tickets, privacy export and erasure, product declarations and MRP
+   - `supabase/migrations/20261112060000_phase7_operations.sql`: rate limits, error monitoring, system health, the health check and alert emails
    - `supabase/seed.sql`: the 15 starting products, collection details and editorial content (safe to re-run)
    - optional, staging only: `supabase/sample_orders.sql` (invented orders to try the Orders view)
 
@@ -60,7 +61,7 @@ The site runs in one of two modes:
    - Optional **Google sign-in:** enable the Google provider (it needs a Google Cloud OAuth client), then set `VITE_AUTH_GOOGLE=true`.
    - Check that TOTP multi-factor is enabled (it is by default).
    - Set up custom SMTP (Authentication → Emails) before launch. The built-in sender is rate-limited and meant for testing.
-5. **Add the keys.** Copy `.env.example` to `.env.local` and fill in the project URL and anon/publishable key (Project Settings → API). In production, set the same two variables in your host (Vercel, Netlify and so on).
+5. **Add the keys.** Copy `.env.example` to `.env.local` and fill in the project URL and anon/publishable key (Project Settings → API). In production, set the same two variables in your host (see *Hosting* below).
 6. `npm run dev`, open `http://localhost:5173/admin/`, sign in, scan the QR code with an authenticator app, and you're in.
 
 **Adding staff:** create their user in Supabase (step 3), then Settings → Team → add their email as Staff or Owner. They set up two-step verification on first sign-in.
@@ -246,6 +247,120 @@ SMS and WhatsApp updates are not included. They need an Indian provider (MSG91, 
    - Work through the compliance checklist until it's clear.
 4. Note: the DPDP Rules' main duties apply from 14 May 2027, and the e-commerce amendments from 1 Jan 2027. Personal-data breaches must be reported to the Data Protection Board and affected people within 72 hours.
 
+## Launch readiness (Phase 7)
+
+### Hosting
+
+The build is a folder of static files (`dist/`) for **Netlify** or **Cloudflare Pages**, which both read the generated `_headers` and `_redirects` files. `netlify.toml` is included; on Cloudflare Pages, set the build command to `npm run build` and the output folder to `dist`.
+
+Set these in the host's environment variables:
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- `SITE_URL=https://yourdomain.com`
+- optionally the analytics pair below
+
+On other hosts (Vercel, nginx), copy the headers from `dist/_headers` into that host's configuration. Without them the site works but loses its security headers.
+
+### Security
+
+- **Security headers** on every page:
+  - a content security policy that allows scripts only from the site itself, Razorpay and your analytics provider, if you chose one
+  - HSTS
+  - no framing (stops clickjacking)
+  - nosniff
+  - a strict referrer policy
+  - a permissions policy that switches off the camera, microphone and location
+- **Private pages** (admin, account, checkout, orders, invoices) are marked `noindex` and are never cached.
+- **Rate limits** on the public functions, per IP address: checkout 30 per 10 minutes, payment check 30, delivery estimate 40. Over the limit, the shopper sees "Too many attempts". The contact form already allowed 5 messages a day.
+- **CORS:** set `ALLOWED_ORIGINS` to your domain. The uptime check reports `cors_locked: false` until you do.
+  ```
+  supabase secrets set ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+  ```
+- **Dependencies:** `npm audit` reports 0 known vulnerabilities. The unused `shadcn` package was removed.
+- **`/.well-known/security.txt`** tells security researchers how to reach you.
+- **In the Supabase dashboard:**
+  - Authentication → Sign In / Providers → Email: turn on *Secure email change*.
+  - Authentication → Attack Protection: turn on *Leaked password protection* (Pro plan), and CAPTCHA if sign-up spam appears.
+  - Make sure every owner and staff member has two-step verification. The admin already requires it.
+
+### Speed
+
+- three.js (the landing page's 3D effect, about 530 KB) is now a separate download, and runs only when the browser can draw WebGL. The landing page's own script went from 596 KB to 75 KB.
+- The photographs were re-compressed: 567 KB smaller, with no visible change. Run `node scripts/optimize-images.mjs` after adding new ones.
+- Fonts are preloaded, and the connection to Supabase is opened early.
+- Fingerprinted files (`/assets/*`) are cached for a year.
+
+### Search and sharing
+
+- **A page per collection** at `/product/sling/`, `/product/mens/` and `/product/laptop/`. Each is prerendered at build time with:
+  - its title, description and canonical address
+  - Open Graph tags for WhatsApp, Instagram and other link previews
+  - structured data (`ProductGroup` with each colour's price and stock, plus breadcrumbs)
+  - readable content, so search engines and link previews see the product without running JavaScript
+
+  The page script then takes over with live data. Old `/product/?c=sling` links still work and point search engines to the new address.
+- **Home and shop** carry Organization, WebSite and ItemList data. **`sitemap.xml`** and **`robots.txt`** are generated; the sitemap needs `SITE_URL`.
+- **Keeping prices current:** prerendered pages show prices and stock as of the last build. `.github/workflows/rebuild.yml` rebuilds nightly when you add a `DEPLOY_HOOK_URL` repository secret (Netlify: Build hooks; Cloudflare: Deploy hooks).
+- **After launch:** add the site to Google Search Console and submit `https://yourdomain.com/sitemap.xml`.
+
+### Analytics (optional)
+
+Analytics is off by default, and then there is no consent banner. To turn it on, set:
+
+| | Plausible (recommended: cookie-free) | Google Analytics 4 |
+|---|---|---|
+| `VITE_ANALYTICS_PROVIDER` | `plausible` | `ga4` |
+| `VITE_ANALYTICS_ID` | your domain | `G-XXXXXXX` |
+
+Then rebuild.
+- Visitors see a banner, and analytics stays off until they choose *Allow*.
+- The store sends GA4-style shopping events: `view_item`, `add_to_cart`, `begin_checkout`, and `purchase` (with revenue).
+- Only page paths are sent, never query strings, so order links and their access tokens stay private.
+- Google signals and ad personalisation are off.
+
+### Monitoring
+
+**System health** in the admin shows:
+- whether emails are going out
+- failed emails
+- server errors from the Edge Functions
+- errors in shoppers' browsers, grouped with counts, and markable as fixed
+- unpaid orders that didn't expire on time
+- failed background jobs
+- overdue complaints
+
+**Alert emails:** every hour, `ops_check()` emails `notify_email` about anything wrong, at most once a day per kind of problem.
+
+**Uptime:** point a free monitor (UptimeRobot, Better Stack) at both:
+- your home page
+- `https://YOUR-PROJECT-REF.supabase.co/functions/v1/health`, which returns 503 if the database stops answering or emails back up
+
+### Backups and restoring
+
+- **Supabase's own backups:** the Pro plan keeps daily backups for 7 days; add Point-in-Time Recovery for restores to the minute. The free plan has no downloadable backups, so turn on the workflow below.
+- **Your own copy:** `.github/workflows/backup.yml` dumps the roles, schema and data every night at 03:00 IST. It encrypts the dump with your passphrase and keeps it for 30 days as a workflow artifact. It needs two repository secrets:
+  - `SUPABASE_DB_URL`: Supabase → Connect → Session pooler, including the password
+  - `BACKUP_PASSPHRASE`: keep it in a password manager
+- **Product photos** live in Storage, which these dumps don't include. Keep the originals.
+- **To restore**, download the artifact, then:
+  ```
+  gpg -d vertu-db-YYYY-MM-DD.tar.gz.gpg | tar xz
+  psql "$NEW_DB_URL" -f backup/roles.sql -f backup/schema.sql -c 'SET session_replication_role = replica' -f backup/data.sql
+  ```
+  Then redeploy the functions and secrets. Practise this once on a spare project before you need it.
+
+**Tests on every push:** `.github/workflows/ci.yml` runs all the tests, a production build and a type-check of the Edge Functions.
+
+### Setting up Phase 7
+
+1. Run `supabase db push`, which applies `20261112060000_phase7_operations.sql`.
+2. Redeploy every function, so they pick up the rate limits and error logging, plus the new `health` function:
+   ```
+   supabase functions deploy checkout payment-verify razorpay-webhook admin-order send-emails email-unsubscribe admin-shipping courier-updates delivery-estimate admin-privacy health
+   ```
+3. Set `ALLOWED_ORIGINS` (above), and `SITE_URL` in your host.
+4. Add the repository secrets for backups (`SUPABASE_DB_URL`, `BACKUP_PASSPHRASE`) and nightly rebuilds (`DEPLOY_HOOK_URL`). Then run *Database backup* once from the Actions tab to check it works.
+5. Set up the two uptime checks, and submit the sitemap to Google Search Console.
+
 ### What each role can do
 
 | | Shopper / public | Staff | Owner |
@@ -261,6 +376,7 @@ SMS and WhatsApp updates are not included. They need an Indian provider (MSG91, 
 | Cancel and refund orders (including return refunds); shipping, payment and business settings | | | ✓ |
 | Remove products; change the low-stock threshold | | | ✓ |
 | Answer support tickets; edit collection declarations and MRPs | | ✓ | ✓ |
+| See System health; mark browser errors fixed | | ✓ | ✓ |
 | Manage the team; see the activity log; export or erase personal data; legal settings and self-audit | | | ✓ |
 
 These rules are enforced by the database (row level security in the migration), not only by hiding buttons. Admin rights also require a two-step-verified session, so a stolen password alone is not enough.
@@ -276,7 +392,7 @@ These rules are enforced by the database (row level security in the migration), 
 
 - `npm test` runs both suites.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
-- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 225 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, which emails are queued when, tracking updates, GST invoice maths and numbering, the returns lifecycle, support tickets, and privacy export and erasure.
+- `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 243 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, which emails are queued when, tracking updates, GST invoice maths and numbering, the returns lifecycle, support tickets, privacy export and erasure, rate limits, error reporting and alerts.
 - `tests/payments.test.mjs`: the Edge Function logic against that same database with a fake Razorpay. Covers signatures, forged and replayed payments, webhooks, retries, Razorpay outages, refunds and cancellations.
 - `tests/pricing-parity.test.mjs`: the browser's pricing matches the database's.
 - `tests/shipping.test.mjs`: the Shiprocket logic against the real database with a fake Shiprocket. Covers login caching and re-login, parcel and order payloads, booking, a failed tracking number followed by a retry, cancelling, manual tracking sync, reverse pickups, delivery estimates and webhook parsing.
@@ -284,5 +400,4 @@ These rules are enforced by the database (row level security in the migration), 
 
 ### Still to do (later phases)
 
-- **Phase 7:** security hardening, performance, SEO (prerendered product pages, sitemap), analytics, monitoring and backups.
 - Later: credit notes for refunds (ask your accountant whether you need them), customers list, bulk product import, SMS/WhatsApp.

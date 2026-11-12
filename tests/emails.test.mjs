@@ -35,6 +35,7 @@ export const SAMPLES = {
   privacy_received: { kind: 'delete', id: 3 },
   privacy_done: { kind: 'delete', id: 3, note: 'Account deleted.' },
   admin_privacy: { kind: 'export', email: 'r@e.com', id: 3 },
+  admin_alert: { kind: 'emails', message: '2 emails failed to send <script>' },
   admin_low_stock: { sku: 'VRT-LP-COB', name: 'Laptop Bag', colour: 'Cobalt', stock: 3, threshold: 5 },
 };
 
@@ -78,7 +79,7 @@ test('marketing email has unsubscribe link and one-click headers; transactional 
   assert.equal(a.headers['List-Unsubscribe'], '<https://ref.supabase.co/functions/v1/email-unsubscribe?t=9f0c1c0e-1111-4222-8333-944444444444>');
   assert.equal(a.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
   assert.deepEqual(render('order_confirmed', order, cfg).headers, {});
-  assert.match(render('back_in_stock', SAMPLES.back_in_stock, cfg).html, /product\/\?c=sling&amp;colour=mustard/);
+  assert.match(render('back_in_stock', SAMPLES.back_in_stock, cfg).html, /product\/sling\/\?colour=mustard/);
 });
 
 test('resend client posts the email with an idempotency key', async () => {

@@ -8,4 +8,4 @@ serve(async (req) => {
   const raw = await req.text();
   const r = await handleWebhook(raw, req.headers.get('X-Razorpay-Signature') || '', deps);
   return json(req, r.status, r.body);
-});
+}, { name: 'razorpay-webhook' });

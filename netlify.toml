@@ -1,0 +1,8 @@
+# Netlify reads this; Cloudflare Pages uses the same build command and output folder (set them in its dashboard).
+# Security headers and redirects are generated into dist/_headers and dist/_redirects by the build.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

@@ -8,4 +8,4 @@ serve(async (req) => {
   if (!deps.rzp) return json(req, 503, { error: 'payments_not_configured' });
   const r = await handleVerify(await req.json().catch(() => null), deps);
   return json(req, r.status, r.body);
-});
+}, { name: 'payment-verify', limit: { max: 30, windowSeconds: 600 } });

@@ -1,0 +1,18 @@
+# Rebuilds the site every night so the prerendered product pages (what search engines and link previews
+# read) carry today's prices and stock. Shoppers always see live data either way.
+# Needs one repository secret: DEPLOY_HOOK_URL (Netlify: Site configuration -> Build hooks;
+# Cloudflare Pages: Settings -> Builds -> Deploy hooks). Skipped quietly if it isn't set.
+name: Nightly rebuild
+on:
+  schedule:
+    - cron: '0 22 * * *' # 03:30 India time
+  workflow_dispatch:
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          HOOK: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "DEPLOY_HOOK_URL not set; nothing to do."; exit 0; fi
+          curl -fsS -X POST -d '{}' "$HOOK" >/dev/null && echo "Rebuild requested."

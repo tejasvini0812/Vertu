@@ -13,4 +13,4 @@ serve(async (req) => {
   }
   const r = await handleCheckout(body, { ...deps, user });
   return json(req, r.status, r.body);
-});
+}, { name: 'checkout', limit: { max: 30, windowSeconds: 600 } });

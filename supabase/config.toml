@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.admin-privacy]
 verify_jwt = false
+
+[functions.health]
+verify_jwt = false

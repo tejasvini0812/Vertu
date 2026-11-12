@@ -1,3 +1,4 @@
+import '../monitor.js';
 import '../styles.css';
 import '../pages.css';
 import { fmt, bySku } from '../data.js';

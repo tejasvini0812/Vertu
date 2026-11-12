@@ -70,5 +70,11 @@ export const fmt = (n) =>
 export const firstInStock = (id) => PRODUCTS[id].colours.findIndex((c) => c.stock > 0);
 
 /** Link to a product page from any page. `base` is '' on the home page and '../' on sub-pages. */
-export const productHref = (id, colourName, base = '') =>
-  `${base}product/?c=${encodeURIComponent(id)}${colourName ? `&colour=${encodeURIComponent(colourName.toLowerCase())}` : ''}`;
+// Built sites use the prerendered address /product/sling/?colour=crimson (see scripts/site-plugin.mjs);
+// the dev server has no prerendered pages, so it keeps /product/?c=sling.
+export const productHref = (id, colourName, base = '') => {
+  const colour = colourName ? encodeURIComponent(colourName.toLowerCase()) : '';
+  return import.meta.env.PROD
+    ? `${base}product/${encodeURIComponent(id)}/${colour ? `?colour=${colour}` : ''}`
+    : `${base}product/?c=${encodeURIComponent(id)}${colour ? `&colour=${colour}` : ''}`;
+};

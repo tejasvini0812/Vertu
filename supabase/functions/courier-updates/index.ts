@@ -10,4 +10,4 @@ serve(async (req) => {
   const body = await req.json().catch(() => null);
   const r = await handleShiprocketWebhook(body, req.headers.get('x-api-key'), { rpc, webhookToken: Deno.env.get('SHIPROCKET_WEBHOOK_TOKEN') || '' });
   return json(req, r.status, r.body);
-});
+}, { name: 'courier-updates' });

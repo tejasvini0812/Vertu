@@ -28,4 +28,4 @@ serve(async (req) => {
     return json(req, 200, { erased: true });
   }
   return json(req, 400, { error: 'bad_action' });
-});
+}, { name: 'admin-privacy' });

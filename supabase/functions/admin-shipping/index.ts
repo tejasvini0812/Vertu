@@ -19,4 +19,4 @@ serve(async (req) => {
     if (err.code === 'shiprocket') return json(req, 502, { error: 'shiprocket', message: err.message });
     throw e;
   }
-});
+}, { name: 'admin-shipping' });

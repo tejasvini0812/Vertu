@@ -13,7 +13,7 @@ const first = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 const q = encodeURIComponent;
 
 const orderUrl = (cfg, p) => `${cfg.siteUrl}/order/?id=${q(p.order_id)}&t=${q(p.token)}`;
-const productUrl = (cfg, p) => `${cfg.siteUrl}/product/?c=${q(p.category)}&colour=${q(String(p.colour || '').toLowerCase())}`;
+const productUrl = (cfg, p) => `${cfg.siteUrl}/product/${q(p.category)}/?colour=${q(String(p.colour || '').toLowerCase())}`;
 const adminOrderUrl = (cfg, p) => `${cfg.siteUrl}/admin/#/orders?open=${q(p.order_id)}`;
 const unsubUrl = (cfg, token) => `${cfg.siteUrl}/newsletter/?unsubscribe=${q(token)}`;
 
@@ -213,6 +213,14 @@ const T = {
       preheader: 'Act on it in the store manager.',
       body: `${h1('A privacy request came in.')}${p(`${esc(x.email)} asked to <strong style="color:${C.ink}">${x.kind === 'delete' ? 'delete their account' : 'get a copy of their data'}</strong>.`)}${button(`${cfg.siteUrl}/admin/#/support`, 'Handle it')}`,
       text: `Privacy request: ${x.kind} for ${x.email}\n${cfg.siteUrl}/admin/#/support`,
+    };
+  },
+  admin_alert(x, cfg) {
+    return {
+      subject: `Store alert: ${x.message.slice(0, 60)}${x.message.length > 60 ? '…' : ''}`,
+      preheader: 'Something needs a look. You’ll get at most one of these a day for each kind of problem.',
+      body: `${h1('Something needs a look.')}${p(esc(x.message))}${button(`${cfg.siteUrl}/admin/#/health`, 'Open System health')}${p('You’ll get at most one of these a day for each kind of problem.')}`,
+      text: `Store alert\n\n${x.message}\n\n${cfg.siteUrl}/admin/#/health`,
     };
   },
   order_delivered(o, cfg) {

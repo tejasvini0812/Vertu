@@ -11,4 +11,4 @@ serve(async (req) => {
   const { data: role } = await caller.rpc('admin_role');
   const r = await handleAdminOrder(await req.json().catch(() => null), { ...deps, role, actor: u.user.id });
   return json(req, r.status, r.body);
-});
+}, { name: 'admin-order' });

@@ -1,3 +1,4 @@
+import '../monitor.js';
 import '../styles.css';
 import '../pages.css';
 import { PRODUCTS, SKUS } from '../data.js';

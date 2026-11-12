@@ -1,3 +1,4 @@
+import '../monitor.js';
 import '../styles.css';
 import '../pages.css';
 import { bySku, fmt } from '../data.js';
@@ -5,6 +6,7 @@ import { mountChrome } from '../chrome.js';
 import { customer, customerReady, accountsEnabled } from '../customer.js';
 import { LIVE, supabase } from '../lib/supabase.js';
 import { getState } from '../store.js';
+import { track } from '../analytics.js';
 import { esc, $ } from './ui.js';
 
 mountChrome();
@@ -58,10 +60,27 @@ function headline(o) {
   }
 }
 
+function trackPurchase(o) {
+  const key = `vertu.tracked.${o.id}`;
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  } catch (_) {
+    return; // without storage we can't avoid double counting on reloads, so don't count
+  }
+  track('purchase', {
+    order_id: o.id,
+    value: o.total,
+    coupon: o.coupon_code || undefined,
+    items: o.lines.map((l) => ({ sku: l.sku, name: bySku(l.sku)?.product.name || l.category, colour: l.colour, price: l.price, qty: l.qty })),
+  });
+}
+
 function render(o) {
   const [h, sub] = headline(o);
   const at = STEPS.indexOf(o.status);
   const live = ['paid', 'cod', 'partially_refunded'].includes(o.payment_status) && o.status !== 'Cancelled';
+  if (live && Date.now() - new Date(o.created_at).getTime() < 864e5) trackPurchase(o);
   document.title = `${o.id} | VERTU`;
   main.innerHTML = `
     <div class="confirm">

@@ -1,7 +1,7 @@
 {
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.16",
-    "shadcn": "^4.23.0",
+    "sharp": "^0.35.5",
     "vite": "^8.3.8",
     "vite-plugin-singlefile": "^2.3.4"
   },

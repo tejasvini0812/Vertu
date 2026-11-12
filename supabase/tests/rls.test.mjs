@@ -511,5 +511,52 @@ await expect('erasure removes account data but keeps tax records detached', asyn
 }, (r) => r.rows[0].a === 0 && r.rows[0].p === 0 && r.rows[0].n === 0 && r.rows[0].c === null && r.rows[0].i === 1);
 await expect('staff cannot close privacy requests', () => as(STAFF, 'aal2', `select resolve_data_request(${dr}, 'done')`), errored('not_allowed'));
 await expect('owner closes it and the person is told', async () => { await as(OWNER, 'aal2', `select resolve_data_request(${dr}, 'Account and personal details deleted. Order records kept for tax law.')`); return { rows: await outbox(`kind='privacy_done'`) }; }, (r) => r.rows.length === 1 && r.rows[0].to_email === 'leaving@example.com');
+
+// ---------------------------------------------------------------- Phase 7: rate limits, monitoring, alerts
+await expect('rate limit allows up to the max, then refuses', async () => {
+  const r = [];
+  for (let i = 0; i < 4; i++) r.push((await svc(`select hit_rate_limit('checkout:1.2.3.4', 3, 600) ok`)).rows[0].ok);
+  return { rows: r };
+}, (r) => r.rows.join() === 'true,true,true,false');
+await expect('rate limit window resets', async () => {
+  await db.exec(`update rate_limits set window_start = now() - interval '11 minutes' where key='checkout:1.2.3.4'`);
+  return svc(`select hit_rate_limit('checkout:1.2.3.4', 3, 600) ok`);
+}, (r) => r.rows[0].ok === true);
+await expect('browsers cannot use the rate limiter', () => as(null, null, `select hit_rate_limit('x', 1, 1)`), errored('permission'));
+await expect('browsers cannot read rate limits', () => as(OWNER, 'aal2', `select * from rate_limits`), rows(0));
+await expect('anyone can report a browser error; repeats are counted', async () => {
+  for (let i = 0; i < 3; i++) await as(null, null, `select log_client_error('TypeError: x is undefined', 'https://shop/assets/product-1.js:10:5', '/product/sling/', 'at f', 'UA', 'abc')`);
+  await as(null, null, `select log_client_error('TypeError: x is undefined', 'https://shop/assets/product-1.js:12:9', '/product/mens/', 'at f', 'UA', 'abc')`);
+  return db.query(`select count, page from client_errors`);
+}, (r) => r.rows.length === 1 && r.rows[0].count === 4 && r.rows[0].page === '/product/mens/');
+await expect('error text is trimmed', async () => { await as(null, null, `select log_client_error($1)`, ['E'.repeat(5000)]); return db.query(`select max(length(message)) n from client_errors`); }, (r) => r.rows[0].n === 500);
+await expect('empty errors are ignored', async () => { await as(null, null, `select log_client_error('  ')`); return db.query(`select count(*)::int n from client_errors`); }, (r) => r.rows[0].n === 2);
+await expect('at most 300 new errors a day are kept', async () => {
+  await db.exec(`insert into client_errors (fingerprint, message) select 'fp' || g, 'm' || g from generate_series(1, 298) g`);
+  await as(null, null, `select log_client_error('brand new error')`);
+  return db.query(`select count(*)::int n, bool_or(message = 'brand new error') found from client_errors`);
+}, (r) => r.rows[0].n === 300 && !r.rows[0].found);
+await db.exec(`delete from client_errors where fingerprint like 'fp%'`);
+await expect('shoppers cannot read browser errors', () => as(SHOP, 'aal2', `select * from client_errors`), rows(0));
+await expect('staff can read browser errors', () => as(STAFF, 'aal2', `select * from client_errors`), (r) => r.rows.length >= 1);
+await expect('shoppers cannot see system health', () => as(SHOP, 'aal2', `select system_health()`), errored('not allowed'));
+await expect('staff without two-step cannot see system health', () => as(STAFF, 'aal1', `select system_health()`), errored('not allowed'));
+await db.exec(`insert into ops_events (kind, source, message) values ('function_error', 'checkout', 'boom'), ('function_error', 'checkout', 'boom'), ('function_error', 'send-emails', 'resend down')`);
+await expect('system health summarises problems for staff', () => as(STAFF, 'aal2', `select system_health() h`), (r) => {
+  const h = r.rows[0].h; return h.function_errors_day === 3 && h.recent_function_errors.length === 3 && h.client_errors_day >= 4 && 'emails_failed' in h && h.cron_failures_day === null;
+});
+await expect('health ping is server-only', () => as(null, null, `select health_ping()`), errored('permission'));
+await expect('health ping answers for the uptime check', () => svc(`select health_ping() h`), (r) => r.rows[0].h.db === true && typeof r.rows[0].h.email_backlog === 'number');
+await expect('ops check is server-only', () => as(OWNER, 'aal2', `select ops_check()`), errored('permission'));
+await expect('ops check emails the store about problems, once a day each', async () => {
+  await db.exec(`insert into email_outbox (kind, to_email, dedupe_key, status) values ('order_confirmed', 'x@y.co', 'p7-failed', 'failed')`);
+  const first = (await svc(`select ops_check() n`)).rows[0].n;
+  const second = (await svc(`select ops_check() n`)).rows[0].n;
+  return { rows: [first, second, await outbox(`kind='admin_alert'`)] };
+}, (r) => r.rows[0] === 2 && r.rows[1] === 0 && r.rows[2].length === 2 && r.rows[2].every((x) => x.to_email === 'store@vertu.test') && r.rows[2].some((x) => x.payload.message.includes('failed to send')));
+await expect('ops check tidies old rate-limit rows', async () => {
+  await db.exec(`insert into rate_limits values ('old', now() - interval '2 days', 1)`); await svc(`select ops_check()`);
+  return db.query(`select count(*)::int n from rate_limits where key='old'`);
+}, (r) => r.rows[0].n === 0);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

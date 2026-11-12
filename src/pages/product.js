@@ -1,3 +1,4 @@
+import '../monitor.js';
 import '../styles.css';
 import '../pages.css';
 import { PRODUCTS, DETAIL_SHOTS, fmt, productHref } from '../data.js';
@@ -7,13 +8,16 @@ import { customer, accountsEnabled } from '../customer.js';
 import { LIVE, supabase } from '../lib/supabase.js';
 import { liveEstimate, validPin } from '../delivery.js';
 import { esc, $, $$, wishButton, bindWishButtons, tile } from './ui.js';
+import { track } from '../analytics.js';
 
 const { drawer } = mountChrome();
 import { legalInfo } from '../legal/info.js';
 const legal = await legalInfo().catch(() => null);
 const main = $('#main');
 const params = new URLSearchParams(location.search);
-const p = PRODUCTS[params.get('c')];
+// /product/sling/ (prerendered, the canonical address) or the older /product/?c=sling
+const pathId = decodeURIComponent((location.pathname.match(/\/product\/([^/]+)\/?$/) || [])[1] || '');
+const p = PRODUCTS[params.get('c') || pathId];
 
 if (!p) {
   document.title = 'Not found | VERTU';
@@ -28,6 +32,9 @@ function render() {
   let ci = p.colours.findIndex((c) => c.name.toLowerCase() === want);
   if (ci < 0) ci = Math.max(0, p.colours.findIndex((c) => c.stock > 0));
   const state = { ci, qty: 1, shot: 0 };
+  canonical();
+  const first = p.colours[ci];
+  track('view_item', { value: first.price, items: [{ sku: first.sku, name: p.name, colour: first.name, price: first.price }] });
   const specs = Object.entries(p.details.specs || {}).filter(([, v]) => String(v || '').trim());
   const features = (p.details.features || []).filter(Boolean);
   const others = Object.values(PRODUCTS).filter((x) => x.id !== p.id);
@@ -257,6 +264,21 @@ function render() {
   if (accountsEnabled) customer.onChange(() => sync());
 }
 
+/** Links resolve against <base> on prerendered pages, so absolute URLs are built from document.baseURI. */
+function abs(href) {
+  return new URL(href, document.baseURI).href;
+}
+
+function canonical() {
+  let el = document.querySelector('link[rel=canonical]');
+  if (!el) {
+    el = document.createElement('link');
+    el.rel = 'canonical';
+    document.head.appendChild(el);
+  }
+  if (!el.dataset.prerendered) el.href = abs(productHref(p.id, null, '../'));
+}
+
 function structuredData(c) {
   let el = document.getElementById('ld-product');
   if (!el) {
@@ -278,13 +300,13 @@ function structuredData(c) {
       sku: x.sku,
       name: `${x.name} ${p.name}`,
       color: x.name,
-      image: new URL(x.img || p.img, location.href).href,
+      image: abs(x.img || p.img),
       offers: {
         '@type': 'Offer',
         price: x.price,
         priceCurrency: 'INR',
         availability: x.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-        url: new URL(productHref(p.id, x.name, '../'), location.href).href,
+        url: abs(productHref(p.id, x.name, '../')),
       },
     })),
   });

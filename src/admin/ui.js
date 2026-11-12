@@ -12,6 +12,7 @@ export const icons = {
   products: I('<path d="M5 8h14l1 12H4L5 8zM9 8V6a3 3 0 0 1 6 0v2"/>'),
   orders: I('<path d="M4 6h16M4 12h16M4 18h10"/>'),
   content: I('<path d="M4 5h16v14H4zM4 15l5-4 4 3 3-2 4 3"/>'),
+  health: I('<path d="M3 12h4l3-7 4 14 3-7h4"/>'),
   support: I('<path d="M4 5h16v11H8l-4 4V5z"/><path d="M8 9h8M8 12h5"/>'),
   returns: I('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
   discounts: I('<path d="M20 12l-8 8-8-8V4h8l8 8z"/><circle cx="8.5" cy="8.5" r="1.5"/>'),

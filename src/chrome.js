@@ -4,6 +4,7 @@ import { customer, accountsEnabled } from './customer.js';
 import { newsletterForm, bindNewsletterForms } from './newsletter.js';
 import { legalLinks, fillEntity } from './legal/footer.js';
 import { initConsent } from './consent.js';
+import './analytics.js';
 
 /**
  * Header, announcement bar, footer, bag drawer and toast for the sub-pages (shop, product, account).
@@ -14,6 +15,12 @@ const esc = (s) =>
 
 export function mountChrome({ current = '' } = {}) {
   const base = '../';
+  // Pages under /product/<name>/ use <base>, so the skip link moves focus itself instead of navigating.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('a.skip')) return;
+    e.preventDefault();
+    document.getElementById('main')?.focus();
+  });
   const a = CONTENT.announcement;
   const href = (h) => (h && h.startsWith('#') ? base + h : h || base);
   document.body.insertAdjacentHTML(

@@ -18,4 +18,4 @@ serve(async (req) => {
     cronSecret: Deno.env.get('EMAIL_CRON_SECRET') || '',
   });
   return json(req, r.status, r.body);
-});
+}, { name: 'send-emails' });

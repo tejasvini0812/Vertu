@@ -1,3 +1,4 @@
+import '../monitor.js';
 import './admin.css';
 import { subscribe, resetDemo, ready, onSyncError, describeError, LIVE } from '../store.js';
 import { gate, session, signOut } from './auth.js';
@@ -10,6 +11,7 @@ import { renderSettings } from './settings.js';
 import { renderDiscounts } from './discounts.js';
 import { renderReturns } from './returns.js';
 import { renderSupport } from './support.js';
+import { renderHealth } from './health.js';
 
 const ROUTES = {
   overview: { label: 'Overview', fn: renderOverview },
@@ -19,6 +21,7 @@ const ROUTES = {
   support: { label: 'Support', fn: renderSupport },
   content: { label: 'Editorial', fn: renderContent },
   discounts: { label: 'Discounts', fn: renderDiscounts },
+  health: { label: 'System health', fn: renderHealth },
   settings: { label: 'Settings', fn: renderSettings },
 };
 const view = $('#view');

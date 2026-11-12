@@ -1449,3 +1449,8 @@
     padding: 6px 10px;
   }
 }
+
+/* Prerendered content for search engines and link previews; the page script replaces it. */
+.ssr { max-width: 720px; margin: 0 auto; padding: 140px 24px 80px; }
+.ssr img { max-width: 100%; height: auto; }
+.ssr ul { padding-left: 1.2em; }
