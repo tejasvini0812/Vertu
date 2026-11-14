@@ -3,11 +3,13 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 // @ts-ignore plain JS module shared with the Node tests
 import { razorpayClient } from './payments.js';
 
-const ALLOWED = (Deno.env.get('ALLOWED_ORIGINS') || '*').split(',').map((s) => s.trim()).filter(Boolean);
+// "https://shop.com/", "HTTPS://Shop.com" and "https://shop.com" all mean the same site.
+const norm = (o: string) => o.trim().replace(/\/+$/, '').toLowerCase();
+const ALLOWED = (Deno.env.get('ALLOWED_ORIGINS') || '*').split(',').map(norm).filter(Boolean);
 
 export function cors(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') || '';
-  const allow = ALLOWED.includes('*') ? '*' : ALLOWED.includes(origin) ? origin : ALLOWED[0];
+  const allow = ALLOWED.includes('*') ? '*' : ALLOWED.includes(norm(origin)) ? origin : ALLOWED[0];
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
