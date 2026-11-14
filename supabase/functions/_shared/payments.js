@@ -41,6 +41,8 @@ export async function verifyWebhookSignature(rawBody, signature, webhookSecret) 
 }
 
 export function razorpayClient(keyId, keySecret, fetchImpl = fetch) {
+  keyId = String(keyId || '').trim();
+  keySecret = String(keySecret || '').trim(); // pasted secrets often carry a stray space or newline
   if (!keyId || !keySecret) return null;
   const auth = 'Basic ' + btoa(`${keyId}:${keySecret}`);
   const call = async (method, path, body) => {
@@ -134,6 +136,8 @@ export async function handleCheckout(body, deps) {
       notes: { order_id: created.order_id },
     });
   } catch (e) {
+    console.error('razorpay createOrder failed', e?.status, e?.message);
+    await deps.onProviderError?.(`Razorpay couldn't create the payment: ${e?.message || e} (HTTP ${e?.status ?? '?'})`);
     // give the stock straight back; the shopper can try again
     await deps.rpc('settle_cancel_refund', { p_order: created.order_id, p_refund_paise: 0, p_refund_id: null, p_restock: true, p_cancel: true, p_actor: null, p_reason: 'Payment provider unavailable' });
     return reply(502, { error: 'payment_provider' });

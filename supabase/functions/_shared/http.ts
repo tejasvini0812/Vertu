@@ -51,9 +51,9 @@ export const deps = {
   rpc,
   getOrder,
   rzp,
-  keyId: Deno.env.get('RAZORPAY_KEY_ID') || '',
-  keySecret: Deno.env.get('RAZORPAY_KEY_SECRET') || '',
-  webhookSecret: Deno.env.get('RAZORPAY_WEBHOOK_SECRET') || '',
+  keyId: (Deno.env.get('RAZORPAY_KEY_ID') || '').trim(),
+  keySecret: (Deno.env.get('RAZORPAY_KEY_SECRET') || '').trim(),
+  webhookSecret: (Deno.env.get('RAZORPAY_WEBHOOK_SECRET') || '').trim(),
   now: () => new Date(),
 };
 
