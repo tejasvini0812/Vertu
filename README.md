@@ -391,6 +391,7 @@ These rules are enforced by the database (row level security in the migration), 
 ### Tests
 
 - `npm test` runs both suites.
+- `.github/workflows/deploy-functions.yml` deploys every Edge Function from GitHub (Actions → *Deploy server functions* → Run workflow), once the `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repository secrets are set. It also runs after any push that changes `supabase/functions`.
 - `npm run test:unit`: how admin edits turn into database writes and image uploads.
 - `npm run test:db`: runs the real migrations and seed in an in-process Postgres and checks 243 rules: access (guest, shopper, staff with and without two-step verification, owner), pricing, coupons, stock holds and expiry, late payments, refunds, which emails are queued when, tracking updates, GST invoice maths and numbering, the returns lifecycle, support tickets, privacy export and erasure, rate limits, error reporting and alerts.
 - `tests/payments.test.mjs`: the Edge Function logic against that same database with a fake Razorpay. Covers signatures, forged and replayed payments, webhooks, retries, Razorpay outages, refunds and cancellations.
